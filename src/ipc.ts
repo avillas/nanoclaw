@@ -5,7 +5,16 @@ import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import {
+  createPipelineExecution,
+  createPipelineStage,
+  createTask,
+  deleteTask,
+  getTaskById,
+  recordAgentCost,
+  updatePipelineExecution,
+  updateTask,
+} from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
@@ -63,6 +72,8 @@ export function startIpcWatcher(deps: IpcDeps): void {
       const isMain = folderIsMain.get(sourceGroup) === true;
       const messagesDir = path.join(ipcBaseDir, sourceGroup, 'messages');
       const tasksDir = path.join(ipcBaseDir, sourceGroup, 'tasks');
+      const costsDir = path.join(ipcBaseDir, sourceGroup, 'costs');
+      const pipelinesDir = path.join(ipcBaseDir, sourceGroup, 'pipelines');
 
       // Process messages from this group's IPC directory
       try {
@@ -145,6 +156,72 @@ export function startIpcWatcher(deps: IpcDeps): void {
       } catch (err) {
         logger.error({ err, sourceGroup }, 'Error reading IPC tasks directory');
       }
+
+      // Process cost reports from this group's IPC directory
+      try {
+        if (fs.existsSync(costsDir)) {
+          const costFiles = fs
+            .readdirSync(costsDir)
+            .filter((f) => f.endsWith('.json'));
+          for (const file of costFiles) {
+            const filePath = path.join(costsDir, file);
+            try {
+              const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+              processCostFile(data, sourceGroup);
+              fs.unlinkSync(filePath);
+            } catch (err) {
+              logger.error(
+                { file, sourceGroup, err },
+                'Error processing IPC cost report',
+              );
+              const errorDir = path.join(ipcBaseDir, 'errors');
+              fs.mkdirSync(errorDir, { recursive: true });
+              fs.renameSync(
+                filePath,
+                path.join(errorDir, `${sourceGroup}-${file}`),
+              );
+            }
+          }
+        }
+      } catch (err) {
+        logger.error(
+          { err, sourceGroup },
+          'Error reading IPC costs directory',
+        );
+      }
+
+      // Process pipeline progress from this group's IPC directory
+      try {
+        if (fs.existsSync(pipelinesDir)) {
+          const pipelineFiles = fs
+            .readdirSync(pipelinesDir)
+            .filter((f) => f.endsWith('.json'));
+          for (const file of pipelineFiles) {
+            const filePath = path.join(pipelinesDir, file);
+            try {
+              const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+              processPipelineFile(data, sourceGroup);
+              fs.unlinkSync(filePath);
+            } catch (err) {
+              logger.error(
+                { file, sourceGroup, err },
+                'Error processing IPC pipeline file',
+              );
+              const errorDir = path.join(ipcBaseDir, 'errors');
+              fs.mkdirSync(errorDir, { recursive: true });
+              fs.renameSync(
+                filePath,
+                path.join(errorDir, `${sourceGroup}-${file}`),
+              );
+            }
+          }
+        }
+      } catch (err) {
+        logger.error(
+          { err, sourceGroup },
+          'Error reading IPC pipelines directory',
+        );
+      }
     }
 
     setTimeout(processIpcFiles, IPC_POLL_INTERVAL);
@@ -152,6 +229,230 @@ export function startIpcWatcher(deps: IpcDeps): void {
 
   processIpcFiles();
   logger.info('IPC watcher started (per-group namespaces)');
+}
+
+// --- Cost report processing ---
+
+// Pricing per 1M tokens in BRL
+const COST_TABLE: Record<
+  string,
+  { input: number; output: number; cacheRead: number; cacheWrite: number }
+> = {
+  opus: { input: 75, output: 375, cacheRead: 7.5, cacheWrite: 93.75 },
+  sonnet: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  haiku: { input: 1.25, output: 6.25, cacheRead: 0.125, cacheWrite: 1.5625 },
+  ollama: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+};
+
+function resolveModelTier(model: string): string {
+  const lower = (model || '').toLowerCase();
+  if (lower.includes('opus')) return 'opus';
+  if (lower.includes('sonnet')) return 'sonnet';
+  if (lower.includes('haiku')) return 'haiku';
+  if (lower.includes('ollama') || lower.includes('llama')) return 'ollama';
+  // Default to sonnet pricing for unknown models
+  return 'sonnet';
+}
+
+function computeCostBrl(
+  model: string,
+  tokensIn: number,
+  tokensOut: number,
+  tokensCacheRead: number,
+  tokensCacheWrite: number,
+): number {
+  const tier = resolveModelTier(model);
+  const rates = COST_TABLE[tier] || COST_TABLE.sonnet;
+  const cost =
+    (tokensIn / 1_000_000) * rates.input +
+    (tokensOut / 1_000_000) * rates.output +
+    (tokensCacheRead / 1_000_000) * rates.cacheRead +
+    (tokensCacheWrite / 1_000_000) * rates.cacheWrite;
+  return Math.round(cost * 10000) / 10000; // 4 decimal places
+}
+
+function extractOfficeFromGroupFolder(groupFolder: string): string {
+  // e.g. "telegram_development" → "development", "slack_ops_team" → "ops_team"
+  // Convention: channel prefix separated by first underscore
+  const underscoreIdx = groupFolder.indexOf('_');
+  if (underscoreIdx > 0) {
+    return groupFolder.substring(underscoreIdx + 1);
+  }
+  // No underscore — use the folder name itself as the office
+  return groupFolder;
+}
+
+function processCostFile(
+  data: {
+    agent_name?: string;
+    model?: string;
+    tokens_in?: number;
+    tokens_out?: number;
+    tokens_cache_read?: number;
+    tokens_cache_write?: number;
+    container_name?: string;
+    date?: string;
+  },
+  sourceGroup: string,
+): void {
+  const agentName = data.agent_name || 'unknown';
+  const model = data.model || 'unknown';
+  const tokensIn = data.tokens_in || 0;
+  const tokensOut = data.tokens_out || 0;
+  const tokensCacheRead = data.tokens_cache_read || 0;
+  const tokensCacheWrite = data.tokens_cache_write || 0;
+  const containerName = data.container_name || '';
+  const date = data.date || new Date().toISOString().split('T')[0];
+  const office = extractOfficeFromGroupFolder(sourceGroup);
+  const costBrl = computeCostBrl(
+    model,
+    tokensIn,
+    tokensOut,
+    tokensCacheRead,
+    tokensCacheWrite,
+  );
+
+  const costId = `cost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  recordAgentCost({
+    id: costId,
+    office,
+    agentName,
+    groupFolder: sourceGroup,
+    date,
+    tokensIn,
+    tokensOut,
+    tokensCacheRead,
+    tokensCacheWrite,
+    costBrl,
+    modelUsed: model,
+    containerName,
+  });
+
+  logger.info(
+    { costId, office, agentName, model, costBrl, sourceGroup },
+    'Agent cost recorded via IPC',
+  );
+}
+
+// --- Pipeline progress processing ---
+
+function processPipelineFile(
+  data: {
+    execution_id?: string;
+    stage?: number;
+    total_stages?: number;
+    status?: string;
+    agent_name?: string;
+    chat_jid?: string;
+    triggered_by?: string;
+    output?: string;
+    score?: number;
+    duration_ms?: number;
+    started_at?: string;
+    completed_at?: string;
+  },
+  sourceGroup: string,
+): void {
+  if (!data.execution_id) {
+    logger.warn({ sourceGroup }, 'Pipeline file missing execution_id');
+    return;
+  }
+
+  const office = extractOfficeFromGroupFolder(sourceGroup);
+  const now = new Date().toISOString();
+
+  if (data.status === 'started' && data.stage === 1) {
+    // First stage started — create a new pipeline execution
+    createPipelineExecution({
+      id: data.execution_id,
+      office,
+      groupFolder: sourceGroup,
+      chatJid: data.chat_jid || '',
+      triggeredBy: data.triggered_by || null,
+      totalStages: data.total_stages || 0,
+    });
+
+    // Also record the first stage
+    const stageId = `stage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    createPipelineStage({
+      id: stageId,
+      executionId: data.execution_id,
+      position: 1,
+      agentName: data.agent_name || 'unknown',
+      status: 'running',
+      output: data.output || null,
+      score: data.score ?? null,
+      durationMs: data.duration_ms ?? null,
+      startedAt: data.started_at || now,
+      completedAt: data.completed_at || null,
+    });
+
+    logger.info(
+      {
+        executionId: data.execution_id,
+        office,
+        totalStages: data.total_stages,
+        sourceGroup,
+      },
+      'Pipeline execution created via IPC',
+    );
+  } else if (data.status === 'completed' && data.stage !== undefined) {
+    // Final stage completed — record the stage and mark execution as completed
+    const stageId = `stage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    createPipelineStage({
+      id: stageId,
+      executionId: data.execution_id,
+      position: data.stage,
+      agentName: data.agent_name || 'unknown',
+      status: 'completed',
+      output: data.output || null,
+      score: data.score ?? null,
+      durationMs: data.duration_ms ?? null,
+      startedAt: data.started_at || null,
+      completedAt: data.completed_at || now,
+    });
+
+    updatePipelineExecution(data.execution_id, {
+      currentStage: data.stage,
+      status: 'completed',
+      completedAt: data.completed_at || now,
+    });
+
+    logger.info(
+      { executionId: data.execution_id, stage: data.stage, sourceGroup },
+      'Pipeline execution completed via IPC',
+    );
+  } else if (data.stage !== undefined) {
+    // Intermediate stage update — record stage and update current position
+    const stageId = `stage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    createPipelineStage({
+      id: stageId,
+      executionId: data.execution_id,
+      position: data.stage,
+      agentName: data.agent_name || 'unknown',
+      status: data.status || 'running',
+      output: data.output || null,
+      score: data.score ?? null,
+      durationMs: data.duration_ms ?? null,
+      startedAt: data.started_at || now,
+      completedAt: data.completed_at || null,
+    });
+
+    updatePipelineExecution(data.execution_id, {
+      currentStage: data.stage,
+    });
+
+    logger.info(
+      {
+        executionId: data.execution_id,
+        stage: data.stage,
+        status: data.status,
+        sourceGroup,
+      },
+      'Pipeline stage recorded via IPC',
+    );
+  }
 }
 
 export async function processTaskIpc(

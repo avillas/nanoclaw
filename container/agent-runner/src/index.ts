@@ -157,6 +157,442 @@ function getSessionSummary(
 }
 
 /**
+ * Pipeline tracker hooks — emit IPC files so the host writes
+ * pipeline_executions / pipeline_stages rows that the dashboard displays.
+ *
+ * Each Task tool invocation (sub-agent spawn) becomes a stage; the final
+ * session Stop closes the execution. State is kept per session in
+ * /workspace/ipc/pipelines-state/<session>.json to compute stage positions
+ * and total_stages.
+ */
+function deriveOfficeFromGroupFolder(folder: string): string {
+  const m = folder.match(/^(?:telegram|whatsapp|slack|discord)_(.+)$/);
+  return m ? m[1] : folder;
+}
+
+function readPipelineState(sessionId: string): {
+  nextPosition: number;
+  totalStages: number;
+  lastPosition: number;
+} {
+  try {
+    return JSON.parse(
+      fs.readFileSync(
+        `/workspace/ipc/pipelines-state/${sessionId}.json`,
+        'utf-8',
+      ),
+    );
+  } catch {
+    return { nextPosition: 1, totalStages: 0, lastPosition: 0 };
+  }
+}
+
+function writePipelineState(sessionId: string, state: unknown): void {
+  try {
+    fs.mkdirSync('/workspace/ipc/pipelines-state', { recursive: true });
+    fs.writeFileSync(
+      `/workspace/ipc/pipelines-state/${sessionId}.json`,
+      JSON.stringify(state),
+    );
+  } catch (err) {
+    log(`Pipeline tracker: failed to write state: ${(err as Error).message}`);
+  }
+}
+
+function countOfficeAgents(office: string): number {
+  try {
+    return fs
+      .readdirSync(`/workspace/offices/${office}/agents`)
+      .filter((f) => f.endsWith('.md')).length;
+  } catch {
+    return 0;
+  }
+}
+
+function listOfficeAgentSlugs(office: string): string[] {
+  try {
+    return fs
+      .readdirSync(`/workspace/offices/${office}/agents`)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => f.replace(/\.md$/, ''));
+  } catch {
+    return [];
+  }
+}
+
+interface AgentFrontmatter {
+  name?: string;
+  description?: string;
+  model?: string;
+  tools?: string;
+  skill?: string;
+  skills?: string;
+}
+
+function parseAgentFile(filePath: string): {
+  frontmatter: AgentFrontmatter;
+  body: string;
+} {
+  let raw = '';
+  try {
+    raw = fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return { frontmatter: {}, body: '' };
+  }
+  const m = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!m) return { frontmatter: {}, body: raw };
+  const fm: AgentFrontmatter = {};
+  for (const line of m[1].split('\n')) {
+    const idx = line.indexOf(':');
+    if (idx > 0) {
+      const k = line.slice(0, idx).trim();
+      const v = line.slice(idx + 1).trim();
+      (fm as any)[k] = v;
+    }
+  }
+  return { frontmatter: fm, body: m[2].trim() };
+}
+
+/**
+ * Load every sub-agent identity file from `/workspace/offices/<office>/agents/`
+ * and translate it into the `AgentDefinition` shape the Claude Agent SDK
+ * expects, so the orchestrator can spawn them via the `Agent` tool with the
+ * agent's slug as `subagent_type`.
+ *
+ * The SDK does NOT auto-discover agents from `~/.claude/agents/`; they must
+ * be passed explicitly via the `agents` option of `query()`.
+ */
+function loadOfficeAgents(
+  office: string,
+): Record<string, { description: string; prompt: string; model?: string }> {
+  const result: Record<string, { description: string; prompt: string; model?: string }> = {};
+  const dir = `/workspace/offices/${office}/agents`;
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
+  } catch {
+    return result;
+  }
+  for (const file of files) {
+    const slug = file.replace(/\.md$/, '');
+    const { frontmatter, body } = parseAgentFile(path.join(dir, file));
+    if (!body) continue;
+    const description =
+      frontmatter.description ||
+      `${slug.replace(/-/g, ' ')} agent of the ${office} office. See identity file for full role.`;
+    const def: { description: string; prompt: string; model?: string } = {
+      description,
+      prompt: body,
+    };
+    if (frontmatter.model && frontmatter.model !== 'inherit') {
+      def.model = frontmatter.model;
+    }
+    result[slug] = def;
+  }
+  return result;
+}
+
+/**
+ * Tools the office orchestrator (main thread) is allowed to call directly.
+ * Anything else MUST be delegated to a named sub-agent. Subagents themselves
+ * are unrestricted by this guard — they need Bash, Edit, etc. to do real work.
+ */
+const ORCHESTRATOR_ALLOWED_TOOLS = new Set<string>([
+  'Agent',
+  'Task',
+  'TaskOutput',
+  'TaskStop',
+  'TeamCreate',
+  'TeamDelete',
+  'SendMessage',
+  'TodoWrite',
+  'ToolSearch',
+  'Read', // further filtered: identity file reads also become active-agent signals
+  'Skill',
+]);
+
+function writeActiveAgent(
+  office: string,
+  subagent: string,
+  sessionId: string,
+  source: string,
+): void {
+  try {
+    fs.writeFileSync(
+      '/workspace/ipc/active-agent.json',
+      JSON.stringify({
+        office,
+        subagent,
+        session_id: sessionId,
+        started_at: new Date().toISOString(),
+        source,
+      }),
+    );
+  } catch (err) {
+    log(`Active-agent write failed: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Runtime guard for sub-agent delegation.
+ *
+ * This hook is the enforcement mechanism for the office's "## Execution rules"
+ * section. It runs on every PreToolUse and applies two policies:
+ *
+ * 1. **Spawn-tool validation** (`Agent` / `Task`): the `subagent_type` MUST
+ *    name a real file in `/workspace/offices/<office>/agents/`. The generic
+ *    `general-purpose` subagent is rejected. On a valid call we record the
+ *    active agent so the dashboard can highlight it.
+ *
+ * 2. **Orchestrator-thread restriction**: when the call comes from the main
+ *    thread (no `agent_id`), only the orchestration tools listed in
+ *    `ORCHESTRATOR_ALLOWED_TOOLS` (and `mcp__*` MCP tools) are permitted. Any
+ *    work tool — `Bash`, `Edit`, `Write`, `WebFetch`, `WebSearch`, `Grep`,
+ *    `Glob`, etc. — is denied with a message instructing the orchestrator to
+ *    delegate via the `Agent` tool. Sub-agents (which carry an `agent_id`)
+ *    are unaffected and can do whatever work they need.
+ *
+ * Reads of identity files at `/workspace/offices/<office>/agents/<slug>.md`
+ * are always allowed and ALSO recorded as an active-agent signal — that
+ * covers offices whose orchestrators "become" an agent inline instead of
+ * spawning one.
+ *
+ * Offices without any agent files (`/workspace/offices/<office>/agents/`
+ * empty or missing) are exempt from both policies — useful for free-form
+ * groups.
+ */
+function createDelegationGuardHook(office: string): HookCallback {
+  return async (input, _toolUseId, _context) => {
+    try {
+      const evt = input as {
+        hook_event_name?: string;
+        tool_name?: string;
+        tool_input?: {
+          subagent_type?: string;
+          description?: string;
+          file_path?: string;
+        };
+        session_id?: string;
+        agent_id?: string;
+      };
+
+      const validSlugs = listOfficeAgentSlugs(office);
+      // Free-form office: no enforcement.
+      if (validSlugs.length === 0) return {};
+
+      const tool = evt.tool_name || '';
+      const sessionId = evt.session_id || 'unknown';
+      const isMainThread = !evt.agent_id;
+
+      // ----- Spawn-tool validation (applies on main thread AND inside subagents) -----
+      if (tool === 'Agent' || tool === 'Task') {
+        const sub = (evt.tool_input?.subagent_type || '').trim();
+        if (!validSlugs.includes(sub)) {
+          const list = validSlugs.map((s) => `- ${s}`).join('\n');
+          const reason =
+            `Delegation rejected: subagent_type "${sub || '(missing)'}" is not a valid agent of the ${office} office.\n\n` +
+            `You MUST set subagent_type to one of:\n${list}\n\n` +
+            `These are the kebab-case filenames in /workspace/offices/${office}/agents/. ` +
+            `The "general-purpose" subagent is forbidden in this office. ` +
+            `Before retrying, Read the identity file of the agent you are about to delegate to.`;
+          log(`Delegation guard: BLOCK spawn subagent_type="${sub}" main=${isMainThread}`);
+          return {
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: reason,
+            },
+          };
+        }
+        writeActiveAgent(office, sub, sessionId, 'agent-tool');
+        log(`Delegation guard: PASS spawn subagent_type="${sub}"`);
+        return {};
+      }
+
+      // ----- Subagent threads: unrestricted (they need to do the actual work) -----
+      if (!isMainThread) return {};
+
+      // ----- Read on the main thread: always allow, capture identity reads -----
+      if (tool === 'Read') {
+        const fp = evt.tool_input?.file_path;
+        const m = fp?.match(
+          /\/workspace\/offices\/[^/]+\/agents\/([^/]+)\.md$/,
+        );
+        if (m) {
+          writeActiveAgent(office, m[1], sessionId, 'role-read');
+          log(`Delegation guard: active-agent via Read ${m[1]}`);
+        }
+        return {};
+      }
+
+      // ----- Orchestrator allow-list: orchestration + MCP -----
+      if (ORCHESTRATOR_ALLOWED_TOOLS.has(tool) || tool.startsWith('mcp__')) {
+        return {};
+      }
+
+      // ----- Everything else on main thread is blocked -----
+      const list = validSlugs.map((s) => `- ${s}`).join('\n');
+      const reason =
+        `Tool "${tool}" is NOT allowed on the orchestrator thread of the ${office} office.\n\n` +
+        `As the orchestrator you must NEVER do work yourself. Delegate it to a sub-agent.\n\n` +
+        `Required protocol:\n` +
+        `1. Read the identity file: /workspace/offices/${office}/agents/<slug>.md\n` +
+        `2. Invoke the Agent tool with subagent_type=<slug> (one of:\n${list}\n).\n` +
+        `3. Pass the work instructions in the prompt field. The sub-agent will run ${tool} for you.\n\n` +
+        `Allowed orchestrator tools: Agent, Read, TodoWrite, ToolSearch, SendMessage, Skill, mcp__nanoclaw__*.`;
+      log(`Delegation guard: BLOCK main-thread tool="${tool}"`);
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: reason,
+        },
+      };
+    } catch (err) {
+      log(`Delegation guard error: ${(err as Error).message}`);
+    }
+    return {};
+  };
+}
+
+function emitPipelineEvent(record: Record<string, unknown>): void {
+  try {
+    fs.mkdirSync('/workspace/ipc/pipelines', { recursive: true });
+    const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`;
+    fs.writeFileSync(
+      `/workspace/ipc/pipelines/${name}`,
+      JSON.stringify(record),
+    );
+  } catch (err) {
+    log(`Pipeline tracker: failed to emit event: ${(err as Error).message}`);
+  }
+}
+
+function createPipelinePreTaskHook(
+  office: string,
+  chatJid: string,
+): HookCallback {
+  return async (input, _toolUseId, _context) => {
+    try {
+      const evt = input as {
+        hook_event_name?: string;
+        tool_name?: string;
+        tool_input?: { subagent_type?: string; description?: string };
+        session_id?: string;
+      };
+      const sessionId = evt.session_id || 'unknown';
+
+      // The Development office (and others) don't actually call the Task
+      // tool — instead the orchestrator "becomes" an agent by Read-ing
+      // /workspace/offices/<office>/agents/<slug>.md. Treat that read as
+      // an active-agent signal too.
+      if (evt.tool_name === 'Read') {
+        const filePath: string | undefined = (evt.tool_input as { file_path?: string })?.file_path;
+        const m = filePath?.match(
+          /\/workspace\/offices\/[^/]+\/agents\/([^/]+)\.md$/,
+        );
+        if (m) {
+          const slug = m[1];
+          try {
+            fs.writeFileSync(
+              '/workspace/ipc/active-agent.json',
+              JSON.stringify({
+                office,
+                subagent: slug,
+                session_id: sessionId,
+                started_at: new Date().toISOString(),
+                source: 'role-read',
+              }),
+            );
+            log(`Active-agent: assumed role ${slug} via Read`);
+          } catch (err) {
+            log(`Active-agent: failed to write (Read): ${(err as Error).message}`);
+          }
+        }
+        return {};
+      }
+
+      if (evt.tool_name !== 'Task' && evt.tool_name !== 'Agent') return {};
+      const subagent =
+        evt.tool_input?.subagent_type ||
+        evt.tool_input?.description ||
+        'subagent';
+
+      const state = readPipelineState(sessionId);
+      if (!state.totalStages) state.totalStages = countOfficeAgents(office);
+
+      const position = state.nextPosition;
+      state.nextPosition = position + 1;
+      state.lastPosition = position;
+      writePipelineState(sessionId, state);
+
+      emitPipelineEvent({
+        execution_id: `pipe-${sessionId}`,
+        stage: position,
+        total_stages: state.totalStages,
+        status: position === 1 ? 'started' : 'running',
+        agent_name: subagent,
+        chat_jid: chatJid,
+        triggered_by: office,
+        started_at: new Date().toISOString(),
+      });
+
+      // Mark this subagent as the office's currently active agent so the
+      // dashboard can show *which* agent is working (not just the office).
+      try {
+        fs.writeFileSync(
+          '/workspace/ipc/active-agent.json',
+          JSON.stringify({
+            office,
+            subagent,
+            session_id: sessionId,
+            started_at: new Date().toISOString(),
+          }),
+        );
+      } catch (err) {
+        log(`Pipeline tracker: failed to write active-agent: ${(err as Error).message}`);
+      }
+
+      log(`Pipeline tracker: stage ${position} started (${subagent})`);
+    } catch (err) {
+      log(`Pipeline tracker PreToolUse error: ${(err as Error).message}`);
+    }
+    return {};
+  };
+}
+
+function createPipelineStopHook(office: string, chatJid: string): HookCallback {
+  return async (input, _toolUseId, _context) => {
+    try {
+      const evt = input as { session_id?: string };
+      const sessionId = evt.session_id || 'unknown';
+      const state = readPipelineState(sessionId);
+      if (state.lastPosition > 0) {
+        emitPipelineEvent({
+          execution_id: `pipe-${sessionId}`,
+          stage: state.lastPosition,
+          total_stages: state.totalStages,
+          status: 'completed',
+          agent_name: 'pipeline',
+          chat_jid: chatJid,
+          triggered_by: office,
+          completed_at: new Date().toISOString(),
+        });
+        log(`Pipeline tracker: execution closed at stage ${state.lastPosition}`);
+      }
+      try {
+        fs.rmSync('/workspace/ipc/active-agent.json', { force: true });
+      } catch {
+        /* ignore */
+      }
+    } catch (err) {
+      log(`Pipeline tracker Stop error: ${(err as Error).message}`);
+    }
+    return {};
+  };
+}
+
+/**
  * Archive the full transcript to conversations/ before compaction.
  */
 function createPreCompactHook(assistantName?: string): HookCallback {
@@ -435,6 +871,15 @@ async function runQuery(
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
 
+  // Load per-office sub-agent definitions so the orchestrator can delegate
+  // via the Agent tool using the agent's kebab-case slug.
+  const officeAgents = loadOfficeAgents(
+    deriveOfficeFromGroupFolder(containerInput.groupFolder),
+  );
+  log(
+    `Loaded ${Object.keys(officeAgents).length} office sub-agents: ${Object.keys(officeAgents).join(', ') || '(none)'}`,
+  );
+
   for await (const message of query({
     prompt: stream,
     options: {
@@ -442,6 +887,7 @@ async function runQuery(
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,
+      agents: Object.keys(officeAgents).length > 0 ? officeAgents : undefined,
       systemPrompt: globalClaudeMd
         ? {
             type: 'preset' as const,
@@ -488,6 +934,46 @@ async function runQuery(
       hooks: {
         PreCompact: [
           { hooks: [createPreCompactHook(containerInput.assistantName)] },
+        ],
+        PreToolUse: [
+          {
+            // No matcher → runs on every tool use. The guard decides what to
+            // allow/deny based on tool name and main-thread vs subagent.
+            hooks: [
+              createDelegationGuardHook(
+                deriveOfficeFromGroupFolder(containerInput.groupFolder),
+              ),
+            ],
+          },
+          {
+            // Pipeline tracker still records spawn-tool invocations as stages.
+            matcher: 'Task',
+            hooks: [
+              createPipelinePreTaskHook(
+                deriveOfficeFromGroupFolder(containerInput.groupFolder),
+                containerInput.chatJid,
+              ),
+            ],
+          },
+          {
+            matcher: 'Agent',
+            hooks: [
+              createPipelinePreTaskHook(
+                deriveOfficeFromGroupFolder(containerInput.groupFolder),
+                containerInput.chatJid,
+              ),
+            ],
+          },
+        ],
+        Stop: [
+          {
+            hooks: [
+              createPipelineStopHook(
+                deriveOfficeFromGroupFolder(containerInput.groupFolder),
+                containerInput.chatJid,
+              ),
+            ],
+          },
         ],
       },
     },

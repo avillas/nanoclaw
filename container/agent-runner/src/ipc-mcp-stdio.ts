@@ -496,6 +496,110 @@ Use available_groups.json to find the JID for a group. The folder name must be c
   },
 );
 
+server.tool(
+  'report_token_usage',
+  `Report token usage and cost for a completed task or agent session.
+Call this after completing significant work to track costs.
+• tokens_in: total input tokens consumed
+• tokens_out: total output tokens generated
+• tokens_cache_read: cache read tokens (if available, default 0)
+• tokens_cache_write: cache write tokens (if available, default 0)
+• model: which model was used (opus, sonnet, haiku, ollama)
+• agent_name: which agent performed the work (e.g., "Product Manager", "Content Writer")`,
+  {
+    tokens_in: z.number().describe('Input tokens consumed'),
+    tokens_out: z.number().describe('Output tokens generated'),
+    tokens_cache_read: z.number().default(0).describe('Cache read tokens'),
+    tokens_cache_write: z
+      .number()
+      .default(0)
+      .describe('Cache write tokens'),
+    model: z
+      .string()
+      .describe('Model used: opus, sonnet, haiku, or ollama model name'),
+    agent_name: z
+      .string()
+      .describe('Agent name that performed the work'),
+  },
+  async (args) => {
+    const costReport = {
+      type: 'token_usage',
+      timestamp: new Date().toISOString(),
+      agent_name: args.agent_name,
+      model: args.model,
+      tokens_in: args.tokens_in,
+      tokens_out: args.tokens_out,
+      tokens_cache_read: args.tokens_cache_read,
+      tokens_cache_write: args.tokens_cache_write,
+    };
+
+    const costsDir = path.join(IPC_DIR, 'costs');
+    writeIpcFile(costsDir, costReport);
+
+    return {
+      content: [{ type: 'text' as const, text: 'Token usage recorded.' }],
+    };
+  },
+);
+
+server.tool(
+  'report_pipeline_progress',
+  `Report pipeline stage completion. Call this when transitioning between agents in a pipeline.
+• pipeline_id: unique ID for this pipeline execution (generate one at start, reuse for all stages)
+• stage_position: current stage number (1-indexed)
+• total_stages: total number of stages in the pipeline
+• agent_name: agent that completed/started this stage
+• status: current status of this stage
+• score: optional quality/validation score
+• output_summary: brief summary of what was produced`,
+  {
+    pipeline_id: z.string().describe('Unique pipeline execution ID'),
+    stage_position: z
+      .number()
+      .describe('Current stage number (1-indexed)'),
+    total_stages: z
+      .number()
+      .describe('Total stages in the pipeline'),
+    agent_name: z.string().describe('Agent name for this stage'),
+    status: z
+      .enum(['started', 'completed', 'failed', 'skipped'])
+      .describe('Stage status'),
+    score: z
+      .number()
+      .optional()
+      .describe('Quality/validation score if applicable'),
+    output_summary: z
+      .string()
+      .optional()
+      .describe('Brief summary of stage output'),
+  },
+  async (args) => {
+    const progressReport = {
+      type: 'pipeline_progress',
+      timestamp: new Date().toISOString(),
+      pipeline_id: args.pipeline_id,
+      stage_position: args.stage_position,
+      total_stages: args.total_stages,
+      agent_name: args.agent_name,
+      status: args.status,
+      score: args.score,
+      output_summary: args.output_summary,
+    };
+
+    const pipelinesDir = path.join(IPC_DIR, 'pipelines');
+    writeIpcFile(pipelinesDir, progressReport);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Pipeline stage ${args.stage_position}/${args.total_stages} recorded.`,
+        },
+      ],
+    };
+  },
+);
+
 // Start the stdio transport
 const transport = new StdioServerTransport();
 await server.connect(transport);

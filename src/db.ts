@@ -82,6 +82,53 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+
+    CREATE TABLE IF NOT EXISTS agent_costs (
+      id TEXT PRIMARY KEY,
+      office TEXT NOT NULL,
+      agent_name TEXT NOT NULL,
+      group_folder TEXT NOT NULL,
+      date TEXT NOT NULL,
+      tokens_in INTEGER DEFAULT 0,
+      tokens_out INTEGER DEFAULT 0,
+      tokens_cache_read INTEGER DEFAULT 0,
+      tokens_cache_write INTEGER DEFAULT 0,
+      cost_brl REAL DEFAULT 0,
+      model_used TEXT,
+      container_name TEXT,
+      recorded_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_costs_date ON agent_costs(date);
+    CREATE INDEX IF NOT EXISTS idx_agent_costs_office ON agent_costs(office);
+
+    CREATE TABLE IF NOT EXISTS pipeline_executions (
+      id TEXT PRIMARY KEY,
+      office TEXT NOT NULL,
+      group_folder TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      triggered_by TEXT,
+      triggered_at TEXT NOT NULL,
+      status TEXT DEFAULT 'running',
+      current_stage INTEGER DEFAULT 0,
+      total_stages INTEGER DEFAULT 0,
+      started_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pipeline_status ON pipeline_executions(status);
+
+    CREATE TABLE IF NOT EXISTS pipeline_stages (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      agent_name TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      output TEXT,
+      score REAL,
+      duration_ms INTEGER,
+      started_at TEXT,
+      completed_at TEXT,
+      FOREIGN KEY (execution_id) REFERENCES pipeline_executions(id)
+    );
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -149,15 +196,11 @@ function createSchema(database: Database.Database): void {
 
   // Add reply context columns if they don't exist (migration for existing DBs)
   try {
-    database.exec(
-      `ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT`,
-    );
+    database.exec(`ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT`);
     database.exec(
       `ALTER TABLE messages ADD COLUMN reply_to_message_content TEXT`,
     );
-    database.exec(
-      `ALTER TABLE messages ADD COLUMN reply_to_sender_name TEXT`,
-    );
+    database.exec(`ALTER TABLE messages ADD COLUMN reply_to_sender_name TEXT`);
   } catch {
     /* columns already exist */
   }
@@ -691,6 +734,176 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     };
   }
   return result;
+}
+
+// --- Agent cost tracking ---
+
+export function recordAgentCost(cost: {
+  id: string;
+  office: string;
+  agentName: string;
+  groupFolder: string;
+  date: string;
+  tokensIn: number;
+  tokensOut: number;
+  tokensCacheRead: number;
+  tokensCacheWrite: number;
+  costBrl: number;
+  modelUsed: string;
+  containerName: string;
+}): void {
+  db.prepare(
+    `
+    INSERT INTO agent_costs (id, office, agent_name, group_folder, date, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, cost_brl, model_used, container_name, recorded_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    cost.id,
+    cost.office,
+    cost.agentName,
+    cost.groupFolder,
+    cost.date,
+    cost.tokensIn,
+    cost.tokensOut,
+    cost.tokensCacheRead,
+    cost.tokensCacheWrite,
+    cost.costBrl,
+    cost.modelUsed,
+    cost.containerName,
+    new Date().toISOString(),
+  );
+}
+
+export function getOfficeCosts(
+  office: string,
+  dateFrom: string,
+  dateTo: string,
+): Array<{
+  date: string;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cache_read: number;
+  tokens_cache_write: number;
+  cost_brl: number;
+  agent_name: string;
+  model_used: string;
+}> {
+  return db
+    .prepare(
+      `
+    SELECT date, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, cost_brl, agent_name, model_used
+    FROM agent_costs WHERE office = ? AND date >= ? AND date <= ?
+    ORDER BY recorded_at DESC
+  `,
+    )
+    .all(office, dateFrom, dateTo) as any[];
+}
+
+export function getDailyCostSummary(date: string): Array<{
+  office: string;
+  total_tokens_in: number;
+  total_tokens_out: number;
+  total_cost_brl: number;
+}> {
+  return db
+    .prepare(
+      `
+    SELECT office, SUM(tokens_in) as total_tokens_in, SUM(tokens_out) as total_tokens_out, SUM(cost_brl) as total_cost_brl
+    FROM agent_costs WHERE date = ? GROUP BY office
+  `,
+    )
+    .all(date) as any[];
+}
+
+// --- Pipeline execution tracking ---
+
+export function createPipelineExecution(exec: {
+  id: string;
+  office: string;
+  groupFolder: string;
+  chatJid: string;
+  triggeredBy: string | null;
+  totalStages: number;
+}): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `
+    INSERT INTO pipeline_executions (id, office, group_folder, chat_jid, triggered_by, triggered_at, status, current_stage, total_stages, started_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'running', 1, ?, ?)
+  `,
+  ).run(
+    exec.id,
+    exec.office,
+    exec.groupFolder,
+    exec.chatJid,
+    exec.triggeredBy,
+    now,
+    exec.totalStages,
+    now,
+  );
+}
+
+export function updatePipelineExecution(
+  id: string,
+  updates: {
+    currentStage?: number;
+    status?: string;
+    completedAt?: string;
+  },
+): void {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+
+  if (updates.currentStage !== undefined) {
+    fields.push('current_stage = ?');
+    values.push(updates.currentStage);
+  }
+  if (updates.status !== undefined) {
+    fields.push('status = ?');
+    values.push(updates.status);
+  }
+  if (updates.completedAt !== undefined) {
+    fields.push('completed_at = ?');
+    values.push(updates.completedAt);
+  }
+
+  if (fields.length === 0) return;
+
+  values.push(id);
+  db.prepare(
+    `UPDATE pipeline_executions SET ${fields.join(', ')} WHERE id = ?`,
+  ).run(...values);
+}
+
+export function createPipelineStage(stage: {
+  id: string;
+  executionId: string;
+  position: number;
+  agentName: string;
+  status: string;
+  output: string | null;
+  score: number | null;
+  durationMs: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}): void {
+  db.prepare(
+    `
+    INSERT INTO pipeline_stages (id, execution_id, position, agent_name, status, output, score, duration_ms, started_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    stage.id,
+    stage.executionId,
+    stage.position,
+    stage.agentName,
+    stage.status,
+    stage.output,
+    stage.score,
+    stage.durationMs,
+    stage.startedAt,
+    stage.completedAt,
+  );
 }
 
 // --- JSON migration ---

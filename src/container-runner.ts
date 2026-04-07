@@ -116,6 +116,18 @@ function buildVolumeMounts(
     }
   }
 
+  // Offices directory (read-only): exposes per-office agent identity files,
+  // skills and workflows so the main agent of each office can load its
+  // sub-agents from /workspace/offices/<office>/agents/<slug>.md
+  const officesDir = path.join(projectRoot, 'offices');
+  if (fs.existsSync(officesDir)) {
+    mounts.push({
+      hostPath: officesDir,
+      containerPath: '/workspace/offices',
+      readonly: true,
+    });
+  }
+
   // Per-group Claude sessions directory (isolated from other groups)
   // Each group gets their own .claude/ to prevent cross-group session access
   const groupSessionsDir = path.join(
@@ -125,28 +137,69 @@ function buildVolumeMounts(
     '.claude',
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
+
+  // Sync pipeline-tracker and other hooks into the per-group .claude/hooks/
+  const hooksSrc = path.join(process.cwd(), 'container', 'hooks');
+  const hooksDst = path.join(groupSessionsDir, 'hooks');
+  if (fs.existsSync(hooksSrc)) {
+    fs.cpSync(hooksSrc, hooksDst, { recursive: true });
+  }
+
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  if (!fs.existsSync(settingsFile)) {
-    fs.writeFileSync(
-      settingsFile,
-      JSON.stringify(
-        {
-          env: {
-            // Enable agent swarms (subagent orchestration)
-            // https://code.claude.com/docs/en/agent-teams#orchestrate-teams-of-claude-code-sessions
-            CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-            // Load CLAUDE.md from additional mounted directories
-            // https://code.claude.com/docs/en/memory#load-memory-from-additional-directories
-            CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
-            // Enable Claude's memory feature (persists user preferences between sessions)
-            // https://code.claude.com/docs/en/memory#manage-auto-memory
-            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-          },
-        },
-        null,
-        2,
-      ) + '\n',
-    );
+  const hookCmd = 'node /home/node/.claude/hooks/pipeline-tracker.mjs';
+  const settingsPayload = {
+    env: {
+      // Enable agent swarms (subagent orchestration)
+      // https://code.claude.com/docs/en/agent-teams#orchestrate-teams-of-claude-code-sessions
+      CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+      // Load CLAUDE.md from additional mounted directories
+      // https://code.claude.com/docs/en/memory#load-memory-from-additional-directories
+      CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
+      // Enable Claude's memory feature (persists user preferences between sessions)
+      // https://code.claude.com/docs/en/memory#manage-auto-memory
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+    },
+    hooks: {
+      // Record each sub-agent invocation as a pipeline stage and the final
+      // session stop as pipeline completion. See container/hooks/pipeline-tracker.mjs.
+      PreToolUse: [
+        { matcher: 'Task', hooks: [{ type: 'command', command: hookCmd }] },
+        { matcher: 'Agent', hooks: [{ type: 'command', command: hookCmd }] },
+        { matcher: 'Read', hooks: [{ type: 'command', command: hookCmd }] },
+      ],
+      Stop: [{ hooks: [{ type: 'command', command: hookCmd }] }],
+    },
+  };
+  // Always (re)write settings.json so hook config stays in sync with host code.
+  fs.writeFileSync(
+    settingsFile,
+    JSON.stringify(settingsPayload, null, 2) + '\n',
+  );
+
+  // Sync office sub-agent identity files into each group's .claude/agents/
+  // so the Claude Agent SDK's Task tool can resolve subagent_type to a real
+  // agent definition. Without this, the agent answers inline instead of
+  // delegating pipeline stages.
+  const officeSlug = group.folder.replace(
+    /^(?:telegram|whatsapp|slack|discord)_/,
+    '',
+  );
+  const officeAgentsSrc = path.join(
+    projectRoot,
+    'offices',
+    officeSlug,
+    'agents',
+  );
+  const officeAgentsDst = path.join(groupSessionsDir, 'agents');
+  if (fs.existsSync(officeAgentsSrc)) {
+    fs.mkdirSync(officeAgentsDst, { recursive: true });
+    for (const file of fs.readdirSync(officeAgentsSrc)) {
+      if (!file.endsWith('.md')) continue;
+      fs.cpSync(
+        path.join(officeAgentsSrc, file),
+        path.join(officeAgentsDst, file),
+      );
+    }
   }
 
   // Sync skills from container/skills/ into each group's .claude/skills/
@@ -172,6 +225,8 @@ function buildVolumeMounts(
   fs.mkdirSync(path.join(groupIpcDir, 'messages'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'tasks'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'input'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'pipelines'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'pipelines-state'), { recursive: true });
   mounts.push({
     hostPath: groupIpcDir,
     containerPath: '/workspace/ipc',
@@ -228,6 +283,7 @@ async function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   agentIdentifier?: string,
+  officeName?: string,
 ): Promise<string[]> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
@@ -237,6 +293,12 @@ async function buildContainerArgs(
   // Forward Ollama admin tools flag if enabled
   if (OLLAMA_ADMIN_TOOLS) {
     args.push('-e', 'OLLAMA_ADMIN_TOOLS=true');
+  }
+
+  // Expose the office name so the pipeline-tracker hook can read
+  // /workspace/offices/<office>/agents/ to compute total_stages.
+  if (officeName) {
+    args.push('-e', `NANOCLAW_OFFICE=${officeName}`);
   }
 
   // OneCLI gateway handles credential injection — containers never see real secrets.
@@ -266,6 +328,15 @@ async function buildContainerArgs(
     args.push('--user', `${hostUid}:${hostGid}`);
     args.push('-e', 'HOME=/home/node');
   }
+
+  // Add labels for dashboard agent tracking
+  if (agentIdentifier) {
+    args.push('--label', `com.nanoclaw.agent=${agentIdentifier}`);
+  }
+  if (officeName) {
+    args.push('--label', `com.nanoclaw.office=${officeName}`);
+  }
+  args.push('--label', 'com.nanoclaw.managed=true');
 
   for (const mount of mounts) {
     if (mount.readonly) {
@@ -298,10 +369,16 @@ export async function runContainerAgent(
   const agentIdentifier = input.isMain
     ? undefined
     : group.folder.toLowerCase().replace(/_/g, '-');
+  // Extract office name from group folder (e.g., "telegram_development" -> "development")
+  const officeMatch = group.folder.match(
+    /^(?:telegram|whatsapp|slack|discord)_(.+)$/,
+  );
+  const officeName = officeMatch ? officeMatch[1] : group.folder;
   const containerArgs = await buildContainerArgs(
     mounts,
     containerName,
     agentIdentifier,
+    officeName,
   );
 
   logger.debug(

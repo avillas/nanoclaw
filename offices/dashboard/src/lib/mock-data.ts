@@ -1,0 +1,195 @@
+import type {
+  Office, Agent, Pipeline, ActivityEvent, CostSummary, DashboardKPIs,
+  OfficeName, PipelineStageExecution,
+} from '@/types';
+
+const now = new Date().toISOString();
+const ago = (mins: number) => new Date(Date.now() - mins * 60000).toISOString();
+
+export const mockOffices: Office[] = [
+  {
+    name: 'marketing',
+    displayName: 'Marketing Office',
+    description: 'Digital marketing campaigns with emphasis on Instagram',
+    agentCount: 10,
+    activeAgents: 4,
+    pipeline: [
+      { position: 1, agentName: 'Content Writer', action: 'Research + write', gate: undefined, onFail: undefined },
+      { position: 2, agentName: 'Content Reviewer', action: 'Score campaign', gate: 'Score ≥ 7.0', onFail: 'Return to Content Writer' },
+      { position: 3, agentName: 'Instagram Strategist', action: 'Adapt to IG format', gate: undefined, onFail: undefined },
+      { position: 4, agentName: 'Growth Hacker', action: 'Viral analysis', gate: undefined, onFail: undefined },
+      { position: 5, agentName: 'Image Prompt Engineer', action: 'Create visuals', gate: undefined, onFail: undefined },
+      { position: 6, agentName: 'Brand Guardian', action: 'Brand check', gate: '100% pass', onFail: 'Return to step 5' },
+      { position: 7, agentName: 'Campaign Validator', action: 'Consolidate + approve', gate: 'User approval', onFail: 'Return to indicated step' },
+      { position: 8, agentName: 'Carousel Publisher', action: 'Publish/deliver', gate: undefined, onFail: undefined },
+      { position: 9, agentName: 'Analytics Engineer', action: 'Collect metrics', gate: undefined, onFail: undefined },
+    ],
+    dailyBudget: 15,
+    monthlyBudget: 100,
+    dailySpent: 6.42,
+    monthlySpent: 47.80,
+    status: 'operational',
+  },
+  {
+    name: 'development',
+    displayName: 'Development Office',
+    description: 'Full software development lifecycle',
+    agentCount: 13,
+    activeAgents: 7,
+    pipeline: [
+      { position: 1, agentName: 'Product Manager', action: 'Specify epics', gate: undefined, onFail: undefined },
+      { position: 2, agentName: 'Product Reviewer', action: 'Validate specs', gate: 'Score ≥ 7.0', onFail: 'Return to PM' },
+      { position: 3, agentName: 'UX Architect', action: 'Design flows', gate: undefined, onFail: undefined },
+      { position: 4, agentName: 'UI Designer', action: 'Visual components', gate: undefined, onFail: undefined },
+      { position: 5, agentName: 'Software Architect', action: 'Task decomposition', gate: undefined, onFail: undefined },
+      { position: 6, agentName: 'Engineering Manager', action: 'Execution plan', gate: undefined, onFail: undefined },
+      { position: 7, agentName: 'Frontend Developer', action: 'Implement frontend', gate: undefined, onFail: undefined },
+      { position: 8, agentName: 'Backend Developer', action: 'Implement backend', gate: undefined, onFail: undefined },
+      { position: 9, agentName: 'Database Architect', action: 'Schema + migrations', gate: undefined, onFail: undefined },
+      { position: 10, agentName: 'QA Engineer', action: 'Test all', gate: 'All tests pass', onFail: 'Return to dev' },
+      { position: 11, agentName: 'Security Engineer', action: 'Security review', gate: 'APPROVED', onFail: 'Return to dev' },
+      { position: 12, agentName: 'DevOps Engineer', action: 'Deploy', gate: undefined, onFail: undefined },
+      { position: 13, agentName: 'Technical Writer', action: 'Documentation', gate: undefined, onFail: undefined },
+    ],
+    dailyBudget: 15,
+    monthlyBudget: 200,
+    dailySpent: 11.23,
+    monthlySpent: 124.50,
+    status: 'operational',
+  },
+  {
+    name: 'innovation',
+    displayName: 'Innovation Office',
+    description: 'Autonomous research and opportunity validation',
+    agentCount: 6,
+    activeAgents: 2,
+    pipeline: [
+      { position: 1, agentName: 'Trend Researcher', action: 'Market scan', gate: undefined, onFail: undefined },
+      { position: 2, agentName: 'Competitive Intelligence', action: 'Competitor analysis', gate: undefined, onFail: undefined },
+      { position: 3, agentName: 'Technology Scout', action: 'Tech feasibility', gate: undefined, onFail: undefined },
+      { position: 4, agentName: 'Business Case Builder', action: 'Build case', gate: undefined, onFail: undefined },
+      { position: 5, agentName: 'Opportunity Validator', action: 'Critical analysis', gate: 'Score ≥ 5.0', onFail: 'Archive' },
+      { position: 6, agentName: 'Innovation Reporter', action: 'Compile report', gate: 'User approval', onFail: 'Archive' },
+    ],
+    dailyBudget: 10,
+    monthlyBudget: 100,
+    dailySpent: 3.15,
+    monthlySpent: 28.90,
+    status: 'operational',
+  },
+];
+
+export const mockAgents: Agent[] = [
+  { id: 'mkt-01', slug: 'content-writer', name: 'Content Writer', office: 'marketing', role: 'Research + write campaigns', model: 'sonnet', status: 'working', pipelinePosition: 1, skills: ['content-creator'], lastActiveAt: ago(2), tasksCompleted: 34, tokensUsed: 245000, costToday: 1.85 },
+  { id: 'mkt-02', slug: 'content-reviewer', name: 'Content Reviewer', office: 'marketing', role: 'Quality gate', model: 'sonnet', status: 'idle', pipelinePosition: 2, skills: ['quality-gate'], lastActiveAt: ago(15), tasksCompleted: 28, tokensUsed: 98000, costToday: 0.72 },
+  { id: 'mkt-03', slug: 'instagram-strategist', name: 'Instagram Strategist', office: 'marketing', role: 'IG format adaptation', model: 'sonnet', status: 'working', pipelinePosition: 3, skills: ['instagram-curator'], lastActiveAt: ago(1), tasksCompleted: 22, tokensUsed: 156000, costToday: 1.15 },
+  { id: 'mkt-04', slug: 'growth-hacker', name: 'Growth Hacker', office: 'marketing', role: 'Viral strategy', model: 'haiku', status: 'idle', pipelinePosition: 4, skills: ['growth-hacker'], lastActiveAt: ago(45), tasksCompleted: 18, tokensUsed: 42000, costToday: 0.12 },
+  { id: 'mkt-05', slug: 'image-prompt-engineer', name: 'Image Prompt Engineer', office: 'marketing', role: 'Visual prompts', model: 'sonnet', status: 'working', pipelinePosition: 5, skills: ['image-prompt-engineer'], lastActiveAt: ago(3), tasksCompleted: 30, tokensUsed: 189000, costToday: 1.40 },
+  { id: 'mkt-06', slug: 'brand-guardian', name: 'Brand Guardian', office: 'marketing', role: 'Brand consistency', model: 'haiku', status: 'idle', pipelinePosition: 6, skills: ['brand-guardian'], lastActiveAt: ago(60), tasksCompleted: 25, tokensUsed: 35000, costToday: 0.10 },
+  { id: 'mkt-07', slug: 'campaign-validator', name: 'Campaign Validator', office: 'marketing', role: 'Consolidate + approve', model: 'haiku', status: 'idle', pipelinePosition: 7, skills: ['campaign-validator'], lastActiveAt: ago(90), tasksCompleted: 15, tokensUsed: 28000, costToday: 0.08 },
+  { id: 'mkt-08', slug: 'carousel-publisher', name: 'Carousel Publisher', office: 'marketing', role: 'Publish campaigns', model: 'haiku', status: 'idle', pipelinePosition: 8, skills: ['instagram-carousel'], lastActiveAt: ago(120), tasksCompleted: 12, tokensUsed: 18000, costToday: 0.05 },
+  { id: 'mkt-09', slug: 'analytics-engineer', name: 'Analytics Engineer', office: 'marketing', role: 'Performance metrics', model: 'haiku', status: 'working', pipelinePosition: 9, skills: ['analytics-engineer'], lastActiveAt: ago(5), tasksCompleted: 40, tokensUsed: 52000, costToday: 0.15 },
+  { id: 'mkt-10', slug: 'ad-copywriter', name: 'Ad Copywriter', office: 'marketing', role: 'Instagram Ads copy', model: 'sonnet', status: 'idle', pipelinePosition: 0, skills: ['ad-copy-specialist'], lastActiveAt: ago(180), tasksCompleted: 8, tokensUsed: 67000, costToday: 0.80 },
+  { id: 'dev-01', slug: 'product-manager', name: 'Product Manager', office: 'development', role: 'Epics + user stories', model: 'sonnet', status: 'working', pipelinePosition: 1, skills: ['product-manager', 'subscription-system'], lastActiveAt: ago(1), tasksCompleted: 45, tokensUsed: 312000, costToday: 2.30 },
+  { id: 'dev-02', slug: 'product-reviewer', name: 'Product Reviewer', office: 'development', role: 'Validate specs', model: 'sonnet', status: 'idle', pipelinePosition: 2, skills: ['product-reviewer', 'quality-gate', 'subscription-system'], lastActiveAt: ago(20), tasksCompleted: 38, tokensUsed: 145000, costToday: 1.05 },
+  { id: 'dev-03', slug: 'ux-architect', name: 'UX Architect', office: 'development', role: 'User flows', model: 'sonnet', status: 'idle', pipelinePosition: 3, skills: ['ux-architect'], lastActiveAt: ago(60), tasksCompleted: 20, tokensUsed: 178000, costToday: 0.00 },
+  { id: 'dev-04', slug: 'ui-designer', name: 'UI Designer', office: 'development', role: 'Visual components', model: 'sonnet', status: 'idle', pipelinePosition: 4, skills: ['ui-designer'], lastActiveAt: ago(120), tasksCompleted: 18, tokensUsed: 198000, costToday: 0.00 },
+  { id: 'dev-05', slug: 'software-architect', name: 'Software Architect', office: 'development', role: 'Architecture decisions', model: 'opus', status: 'working', pipelinePosition: 5, skills: ['software-architect', 'subscription-system'], lastActiveAt: ago(3), tasksCompleted: 12, tokensUsed: 425000, costToday: 4.20 },
+  { id: 'dev-06', slug: 'engineering-manager', name: 'Engineering Manager', office: 'development', role: 'Execution plans', model: 'sonnet', status: 'working', pipelinePosition: 6, skills: ['engineering-manager', 'subscription-system'], lastActiveAt: ago(5), tasksCompleted: 30, tokensUsed: 167000, costToday: 1.22 },
+  { id: 'dev-07', slug: 'frontend-developer', name: 'Frontend Developer', office: 'development', role: 'Frontend tasks', model: 'sonnet', status: 'working', pipelinePosition: 7, skills: ['frontend-developer', 'git-workflow', 'subscription-system'], lastActiveAt: ago(1), tasksCompleted: 52, tokensUsed: 389000, costToday: 2.85 },
+  { id: 'dev-08', slug: 'backend-developer', name: 'Backend Developer', office: 'development', role: 'Backend tasks', model: 'sonnet', status: 'working', pipelinePosition: 7, skills: ['backend-architect', 'git-workflow', 'subscription-system'], lastActiveAt: ago(2), tasksCompleted: 48, tokensUsed: 401000, costToday: 2.95 },
+  { id: 'dev-09', slug: 'database-architect', name: 'Database Architect', office: 'development', role: 'Schema + migrations', model: 'sonnet', status: 'working', pipelinePosition: 7, skills: ['database-architect', 'git-workflow', 'subscription-system'], lastActiveAt: ago(4), tasksCompleted: 22, tokensUsed: 234000, costToday: 1.72 },
+  { id: 'dev-10', slug: 'qa-engineer', name: 'QA Engineer', office: 'development', role: 'Testing', model: 'haiku', status: 'idle', pipelinePosition: 8, skills: ['qa-engineer', 'subscription-system'], lastActiveAt: ago(30), tasksCompleted: 65, tokensUsed: 78000, costToday: 0.22 },
+  { id: 'dev-11', slug: 'security-engineer', name: 'Security Engineer', office: 'development', role: 'Security review', model: 'sonnet', status: 'working', pipelinePosition: 9, skills: ['security-engineer', 'subscription-system'], lastActiveAt: ago(10), tasksCompleted: 28, tokensUsed: 198000, costToday: 1.45 },
+  { id: 'dev-12', slug: 'devops-engineer', name: 'DevOps Engineer', office: 'development', role: 'Deploy + CI/CD', model: 'sonnet', status: 'idle', pipelinePosition: 10, skills: ['devops-engineer', 'git-workflow'], lastActiveAt: ago(45), tasksCompleted: 35, tokensUsed: 145000, costToday: 0.00 },
+  { id: 'dev-13', slug: 'technical-writer', name: 'Technical Writer', office: 'development', role: 'Documentation', model: 'haiku', status: 'idle', pipelinePosition: 11, skills: ['technical-writer', 'subscription-system'], lastActiveAt: ago(90), tasksCompleted: 42, tokensUsed: 56000, costToday: 0.00 },
+  { id: 'inn-01', slug: 'trend-researcher', name: 'Trend Researcher', office: 'innovation', role: 'Market scan', model: 'sonnet', status: 'working', pipelinePosition: 1, skills: ['trend-researcher'], lastActiveAt: ago(8), tasksCompleted: 55, tokensUsed: 345000, costToday: 1.85 },
+  { id: 'inn-02', slug: 'competitive-intelligence', name: 'Competitive Intelligence', office: 'innovation', role: 'Competitor analysis', model: 'sonnet', status: 'working', pipelinePosition: 2, skills: ['competitive-intelligence'], lastActiveAt: ago(12), tasksCompleted: 30, tokensUsed: 278000, costToday: 1.30 },
+  { id: 'inn-03', slug: 'technology-scout', name: 'Technology Scout', office: 'innovation', role: 'Tech feasibility', model: 'haiku', status: 'idle', pipelinePosition: 3, skills: ['technology-scout'], lastActiveAt: ago(60), tasksCompleted: 48, tokensUsed: 65000, costToday: 0.00 },
+  { id: 'inn-04', slug: 'business-case-builder', name: 'Business Case Builder', office: 'innovation', role: 'Build business cases', model: 'sonnet', status: 'idle', pipelinePosition: 4, skills: ['business-case-builder'], lastActiveAt: ago(120), tasksCompleted: 15, tokensUsed: 198000, costToday: 0.00 },
+  { id: 'inn-05', slug: 'opportunity-validator', name: 'Opportunity Validator', office: 'innovation', role: 'Critical analysis + score', model: 'sonnet', status: 'idle', pipelinePosition: 5, skills: ['opportunity-validator'], lastActiveAt: ago(180), tasksCompleted: 12, tokensUsed: 156000, costToday: 0.00 },
+  { id: 'inn-06', slug: 'innovation-reporter', name: 'Innovation Reporter', office: 'innovation', role: 'Compile reports', model: 'haiku', status: 'idle', pipelinePosition: 6, skills: ['innovation-reporter'], lastActiveAt: ago(240), tasksCompleted: 20, tokensUsed: 34000, costToday: 0.00 },
+];
+
+const stageExec = (pos: number, name: string, status: PipelineStageExecution['status'], dur?: number, score?: number): PipelineStageExecution => ({
+  position: pos, agentName: name, status, startedAt: ago(dur || 0), completedAt: status === 'completed' ? ago((dur || 0) - 5) : undefined,
+  duration: status === 'completed' ? (dur || 5) * 60 : undefined, score, gateResult: score !== undefined ? (score >= 7 ? 'passed' : 'failed') : undefined,
+});
+
+export const mockPipelines: Pipeline[] = [
+  {
+    id: 'pipe-001', office: 'marketing', triggeredBy: 'Telegram @marketing', triggeredAt: ago(45),
+    status: 'running', currentStage: 5,
+    stages: [
+      stageExec(1, 'Content Writer', 'completed', 40, undefined),
+      stageExec(2, 'Content Reviewer', 'completed', 32, 8.2),
+      stageExec(3, 'Instagram Strategist', 'completed', 25),
+      stageExec(4, 'Growth Hacker', 'completed', 18),
+      stageExec(5, 'Image Prompt Engineer', 'running'),
+      stageExec(6, 'Brand Guardian', 'pending'),
+      stageExec(7, 'Campaign Validator', 'pending'),
+      stageExec(8, 'Carousel Publisher', 'pending'),
+      stageExec(9, 'Analytics Engineer', 'pending'),
+    ],
+  },
+  {
+    id: 'pipe-002', office: 'development', triggeredBy: 'Innovation Office handoff', triggeredAt: ago(120),
+    status: 'running', currentStage: 7,
+    stages: [
+      stageExec(1, 'Product Manager', 'completed', 110),
+      stageExec(2, 'Product Reviewer', 'completed', 95, 7.8),
+      stageExec(3, 'UX Architect', 'completed', 80),
+      stageExec(4, 'UI Designer', 'completed', 65),
+      stageExec(5, 'Software Architect', 'completed', 50),
+      stageExec(6, 'Engineering Manager', 'completed', 35),
+      stageExec(7, 'Frontend Developer', 'running'),
+      stageExec(8, 'Backend Developer', 'running'),
+      stageExec(9, 'Database Architect', 'running'),
+      stageExec(10, 'QA Engineer', 'pending'),
+      stageExec(11, 'Security Engineer', 'pending'),
+      stageExec(12, 'DevOps Engineer', 'pending'),
+      stageExec(13, 'Technical Writer', 'pending'),
+    ],
+  },
+  {
+    id: 'pipe-003', office: 'innovation', triggeredBy: 'Cron 7:00 AM', triggeredAt: ago(180),
+    status: 'completed', currentStage: 6,
+    stages: [
+      stageExec(1, 'Trend Researcher', 'completed', 170),
+      stageExec(2, 'Competitive Intelligence', 'completed', 140),
+      stageExec(3, 'Technology Scout', 'completed', 110),
+      stageExec(4, 'Business Case Builder', 'completed', 70),
+      stageExec(5, 'Opportunity Validator', 'completed', 30, 7.5),
+      stageExec(6, 'Innovation Reporter', 'completed', 10),
+    ],
+  },
+];
+
+export const mockActivity: ActivityEvent[] = [
+  { id: 'act-01', timestamp: ago(1), office: 'development', agent: 'Frontend Developer', action: 'commit_pushed', detail: 'feat(checkout): add subscription plan selector component', level: 'success' },
+  { id: 'act-02', timestamp: ago(3), office: 'marketing', agent: 'Image Prompt Engineer', action: 'task_started', detail: 'Creating visual prompts for "AI Productivity" campaign', level: 'info' },
+  { id: 'act-03', timestamp: ago(5), office: 'development', agent: 'Software Architect', action: 'adr_created', detail: 'ADR-015: Use subscription-system for billing integration', level: 'info' },
+  { id: 'act-04', timestamp: ago(8), office: 'innovation', agent: 'Trend Researcher', action: 'research_completed', detail: 'Market scan: AI-powered customer support trends Q1 2026', level: 'success' },
+  { id: 'act-05', timestamp: ago(12), office: 'development', agent: 'Backend Developer', action: 'pr_opened', detail: 'PR #142: Implement webhook consumer for payment events', level: 'info' },
+  { id: 'act-06', timestamp: ago(15), office: 'marketing', agent: 'Content Reviewer', action: 'review_completed', detail: 'Campaign "AI Productivity" scored 8.2/10 - APPROVED', level: 'success' },
+  { id: 'act-07', timestamp: ago(20), office: 'development', agent: 'QA Engineer', action: 'tests_failed', detail: '3 integration tests failing in subscription module', level: 'error' },
+  { id: 'act-08', timestamp: ago(30), office: 'innovation', agent: 'Opportunity Validator', action: 'opportunity_scored', detail: 'AI Support Bot opportunity scored 7.5/10 - advancing', level: 'success' },
+  { id: 'act-09', timestamp: ago(45), office: 'marketing', agent: 'Content Writer', action: 'task_started', detail: 'Starting campaign: "AI Productivity Tips for Remote Teams"', level: 'info' },
+  { id: 'act-10', timestamp: ago(60), office: 'development', agent: 'Security Engineer', action: 'security_alert', detail: 'WARN: Missing rate limiting on /api/external/v1/subscriptions', level: 'warning' },
+];
+
+export const mockCosts: CostSummary[] = [
+  { office: 'marketing', dailyBudget: 15, monthlyBudget: 100, dailySpent: 6.42, monthlySpent: 47.80, dailyPercentage: 42.8, monthlyPercentage: 47.8 },
+  { office: 'development', dailyBudget: 15, monthlyBudget: 200, dailySpent: 11.23, monthlySpent: 124.50, dailyPercentage: 74.9, monthlyPercentage: 62.3 },
+  { office: 'innovation', dailyBudget: 10, monthlyBudget: 100, dailySpent: 3.15, monthlySpent: 28.90, dailyPercentage: 31.5, monthlyPercentage: 28.9 },
+];
+
+export const mockKPIs: DashboardKPIs = {
+  totalAgents: 29,
+  activeAgents: 13,
+  runningPipelines: 2,
+  completedToday: 5,
+  totalCostToday: 20.80,
+  totalCostMonth: 201.20,
+  offices: mockOffices,
+};
