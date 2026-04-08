@@ -297,6 +297,50 @@ function parseAgentFile(filePath: string): {
 }
 
 /**
+ * Output convention appended to every sub-agent prompt. The orchestrator's
+ * system prompt is augmented with /workspace/global/CLAUDE.md (which contains
+ * the same convention), but sub-agents spawned via the `Agent` tool have
+ * their own system prompt built solely from the identity file body — they do
+ * not inherit the global instructions. Without this appendix, agents like
+ * innovation-reporter will produce deliverables in /workspace/group/ instead
+ * of /workspace/reports/ and never use the pdf-generator skill, because they
+ * have no idea either of those things exists.
+ */
+const SUBAGENT_OUTPUT_CONVENTION = `
+
+## Output convention (applies to every deliverable you produce)
+
+When your work produces a **file deliverable** the user is meant to download
+(PDF report, CSV export, JSON, generated .md document, image, .docx, etc.),
+follow these rules. They override any instruction in this identity file that
+suggests writing to /workspace/group/.
+
+- **Save final deliverables to \`/workspace/reports/<descriptive-name>.<ext>\`**.
+  This directory is mounted from the host, scoped to your office, and is the
+  only path the dashboard's *Reports* page picks up. Files written anywhere
+  else (\`/workspace/group/\`, \`/tmp/\`, \`/workspace/extra/\`, ...) will not
+  appear on the dashboard.
+- **Use a descriptive filename with a date when relevant**, e.g.
+  \`2026-04-08_competitive-analysis.pdf\`. The filename is exactly what the
+  user sees in the dashboard listing.
+- **For PDFs, use the \`pdf-generator\` shared skill** at
+  \`/workspace/offices/shared/skills/pdf-generator/SKILL.md\`. Read the SKILL.md
+  first, then call the script:
+  \`node /workspace/offices/shared/skills/pdf-generator/md2pdf.js <input.md> /workspace/reports/<output.pdf>\`
+  Never claim "PDF nativo não está disponível" — the skill is always available
+  in the container, you just need to use it.
+- **\`/tmp/\` is fine for scratch / intermediate files** (markdown sources,
+  temp HTML, working notes). Just make sure the *final* deliverable lands in
+  \`/workspace/reports/\`.
+- **Files in \`/workspace/reports/\` are auto-deleted after 60 days** by the
+  dashboard's reports page. Anything that needs longer retention has to be
+  moved or copied elsewhere by the user — do not try to extend retention
+  yourself.
+- **After producing a deliverable, briefly tell the user the file is
+  available on the dashboard's *Reports* page** (do not paste the full path).
+`;
+
+/**
  * Load every sub-agent identity file from `/workspace/offices/<office>/agents/`
  * and translate it into the `AgentDefinition` shape the Claude Agent SDK
  * expects, so the orchestrator can spawn them via the `Agent` tool with the
@@ -304,6 +348,10 @@ function parseAgentFile(filePath: string): {
  *
  * The SDK does NOT auto-discover agents from `~/.claude/agents/`; they must
  * be passed explicitly via the `agents` option of `query()`.
+ *
+ * The body of each identity file is appended with SUBAGENT_OUTPUT_CONVENTION
+ * so every sub-agent learns where to save deliverables, regardless of what
+ * its identity file says.
  */
 function loadOfficeAgents(
   office: string,
@@ -325,7 +373,7 @@ function loadOfficeAgents(
       `${slug.replace(/-/g, ' ')} agent of the ${office} office. See identity file for full role.`;
     const def: { description: string; prompt: string; model?: string } = {
       description,
-      prompt: body,
+      prompt: body + SUBAGENT_OUTPUT_CONVENTION,
     };
     if (frontmatter.model && frontmatter.model !== 'inherit') {
       def.model = frontmatter.model;

@@ -6,7 +6,7 @@ import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard, Building2, Bot, GitBranch, Activity,
   DollarSign, LogOut, Cpu, ChevronRight, Container, Apple, Send,
-  Monitor, Sun, Moon, X,
+  Monitor, Sun, Moon, X, Sparkles, FileDown,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/cn';
@@ -18,6 +18,8 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/offices', label: 'Offices', icon: Building2 },
   { href: '/agents', label: 'Agents', icon: Bot },
+  { href: '/skills', label: 'Skills', icon: Sparkles },
+  { href: '/reports', label: 'Reports', icon: FileDown },
   { href: '/floor', label: 'Office Floor', icon: Monitor },
   { href: '/pipelines', label: 'Pipelines', icon: GitBranch },
   { href: '/activity', label: 'Activity', icon: Activity },

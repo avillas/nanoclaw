@@ -38,6 +38,32 @@ When working as a sub-agent or teammate, only use `send_message` if instructed t
 
 Files you create are saved in `/workspace/group/`. Use this for notes, research, or anything that should persist.
 
+## Reports & Deliverables
+
+When your work produces a **deliverable file** that the user is meant to download — a PDF report, a CSV export, a JSON dump, a generated `.md` document, an image, a `.docx`, etc. — save it to **`/workspace/reports/<descriptive-name>.<ext>`**, not to `/workspace/group/`.
+
+`/workspace/reports/` is the office's *Reports* directory: it's mounted from the host, scoped to your office, and surfaced on the dashboard's `/reports` page where the user can download every file you place there.
+
+### Rules
+
+- **Always** save deliverables to `/workspace/reports/`. Anything you write to `/workspace/group/` will not appear on the dashboard.
+- **Use a descriptive filename** — that filename is exactly what the user sees in the listing. Include a date or version when relevant: `2026-04-08_competitive-analysis.pdf`, `q2-roadmap-v3.md`.
+- **Subdirectories are allowed** — group related outputs into folders if you produce many: `/workspace/reports/q2-research/sources.csv`, `/workspace/reports/q2-research/summary.pdf`.
+- **`/tmp/` is fine for scratch files** — use it for intermediate markdown sources, temporary HTML, etc. Just make sure the *final* deliverable lands in `/workspace/reports/`.
+- **Files are auto-deleted after 60 days** — anything that needs longer retention should be moved or copied elsewhere by the user.
+
+### Generating PDFs
+
+Use the shared `pdf-generator` skill at `/workspace/offices/shared/skills/pdf-generator/SKILL.md`. It converts a Markdown file to a PDF using headless Chromium. Example:
+
+```bash
+node /workspace/offices/shared/skills/pdf-generator/md2pdf.js \
+  /tmp/report.md \
+  /workspace/reports/2026-04-08_my-report.pdf
+```
+
+After producing a deliverable, **tell the user** the file is available on the dashboard's *Reports* page (do not paste the full path — they don't need it).
+
 ## Memory
 
 The `conversations/` folder contains searchable history of past conversations. Use this to recall context from previous sessions.

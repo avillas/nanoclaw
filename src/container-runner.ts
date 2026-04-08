@@ -252,6 +252,25 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Per-office reports directory. Agents that produce deliverables (PDFs,
+  // CSVs, generated reports, etc.) write them to /workspace/reports/<file>
+  // and the dashboard's /reports page serves them back to the user. The
+  // mount is scoped to the office so a marketing container cannot read or
+  // overwrite a development report. Each office's reports are persisted
+  // under data/reports/<office>/ on the host and auto-cleaned after 60
+  // days by the dashboard's reports-reader on first access.
+  const officeForReports = group.folder.replace(
+    /^(?:telegram|whatsapp|slack|discord)_/,
+    '',
+  );
+  const reportsDir = path.join(DATA_DIR, 'reports', officeForReports);
+  fs.mkdirSync(reportsDir, { recursive: true });
+  mounts.push({
+    hostPath: reportsDir,
+    containerPath: '/workspace/reports',
+    readonly: false,
+  });
+
   // Copy agent-runner source into a per-group writable location so agents
   // can customize it (add tools, change behavior) without affecting other
   // groups. Recompiled on container startup via entrypoint.sh.

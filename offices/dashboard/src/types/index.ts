@@ -80,6 +80,36 @@ export interface PipelineStageExecution {
   gateResult?: 'passed' | 'failed' | 'pending';
 }
 
+// --- Skills ---
+export type SkillScope = 'shared' | (string & {});
+
+export interface Skill {
+  scope: SkillScope;
+  name: string;
+  displayName: string;
+  description: string;
+  hasExtraFiles: boolean;
+  extraFiles: string[];
+}
+
+export interface SkillWithContent extends Skill {
+  rawContent: string;
+}
+
+// --- Reports ---
+export interface Report {
+  /** Office that produced the report */
+  office: string;
+  /** File path relative to the office's reports/ dir (may include subdirs) */
+  path: string;
+  /** Bare filename (last segment of path) */
+  name: string;
+  /** Size in bytes */
+  size: number;
+  /** ISO timestamp from the file mtime */
+  modifiedAt: string;
+}
+
 // --- Activity ---
 export interface ActivityEvent {
   id: string;
