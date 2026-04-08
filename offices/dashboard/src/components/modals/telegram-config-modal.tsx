@@ -128,28 +128,28 @@ export function TelegramConfigModal({ open, onClose, onConfigured, officeName, o
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-surface-1 border border-border rounded-2xl w-full max-w-xl max-h-[85vh] overflow-hidden shadow-2xl animate-slide-up">
+      <div className="relative bg-surface-1 border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden shadow-2xl animate-slide-up flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
               <Link2 className="w-5 h-5 text-blue-400" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-lg font-bold">Vincular Grupo</h2>
-              <p className="text-xs text-text-muted">{officeDisplayName}</p>
+              <p className="text-xs text-text-muted truncate">{officeDisplayName}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-2 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-2 transition-colors flex-shrink-0">
             <X className="w-5 h-5 text-text-muted" />
           </button>
         </div>
 
         {/* Step indicator */}
-        <div className="flex px-6 pt-4 gap-2">
+        <div className="flex px-4 sm:px-6 pt-4 gap-2">
           {STEPS.map((s, i) => (
             <div key={s} className="flex-1">
               <div className={cn('h-1 rounded-full transition-colors', i <= step ? 'bg-blue-400' : 'bg-surface-3')} />
@@ -159,7 +159,7 @@ export function TelegramConfigModal({ open, onClose, onConfigured, officeName, o
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5 overflow-y-auto max-h-[55vh] space-y-4">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1 space-y-4">
 
           {/* Step 0: Select Group */}
           {step === 0 && (
@@ -314,7 +314,7 @@ export function TelegramConfigModal({ open, onClose, onConfigured, officeName, o
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-border">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-t border-border">
           <button
             onClick={() => step > 0 && step < 2 ? setStep(step - 1) : onClose()}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-2 transition-colors"

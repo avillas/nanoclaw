@@ -41,12 +41,14 @@ export default function TelegramPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const res = await fetch('/api/telegram');
-      const data = await res.json();
-      setGlobalBot(data.global || null);
-      setOffices(data.offices || []);
+      const res = await fetch('/api/telegram', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setGlobalBot(data.global || null);
+        setOffices(data.offices || []);
+      }
     } catch {
-      // ignore
+      // Network error — keep previously loaded state instead of clobbering it.
     } finally {
       setLoading(false);
     }
@@ -107,7 +109,7 @@ export default function TelegramPage() {
     return (
       <>
         <Header title="Telegram" description="Bot configuration and office group mapping" />
-        <div className="p-8 flex justify-center">
+        <div className="p-4 sm:p-6 lg:p-8 flex justify-center">
           <div className="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
         </div>
       </>
@@ -118,7 +120,7 @@ export default function TelegramPage() {
     <>
       <Header title="Telegram" description="Bot configuration and office group mapping" />
 
-      <div className="p-8 space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in">
 
         {/* Global Bot Card */}
         <div className={cn(

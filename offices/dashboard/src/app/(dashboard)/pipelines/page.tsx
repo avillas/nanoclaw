@@ -7,6 +7,7 @@ import {
   ChevronRight, Play, Timer,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { refreshState } from '@/lib/api-fetch';
 import type { Pipeline, OfficeName, PipelineStageExecution } from '@/types';
 
 const officeGradients: Record<OfficeName, string> = {
@@ -49,10 +50,9 @@ export default function PipelinesPage() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
 
   useEffect(() => {
-    fetch('/api/pipelines').then((r) => r.json()).then(setPipelines);
-    const interval = setInterval(() => {
-      fetch('/api/pipelines').then((r) => r.json()).then(setPipelines);
-    }, 5000);
+    const load = () => refreshState<Pipeline[]>('/api/pipelines', setPipelines);
+    load();
+    const interval = setInterval(load, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -63,7 +63,7 @@ export default function PipelinesPage() {
     <>
       <Header title="Pipelines" description={running > 0 ? `${running} pipeline(s) running` : `${defined} pipeline(s) defined`} />
 
-      <div className="p-8 space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in">
         {pipelines.map((pipeline, pi) => {
           const completedStages = pipeline.stages.filter((s) => s.status === 'completed').length;
           const progress = (completedStages / pipeline.stages.length) * 100;

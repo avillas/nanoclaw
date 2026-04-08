@@ -58,17 +58,17 @@ export function CreateAgentModal({ open, onClose, onCreated, preselectedOffice }
   // Load meta
   useEffect(() => {
     if (!open) return;
-    fetch('/api/agents/meta').then((r) => r.json()).then((d) => {
+    fetch('/api/agents/meta', { cache: 'no-store' }).then((r) => r.json()).then((d) => {
       setOffices(d.offices || []);
-    });
+    }).catch(() => {});
   }, [open]);
 
   // Load skills when office changes
   useEffect(() => {
     if (!form.office) return;
-    fetch(`/api/agents/meta?office=${form.office}`).then((r) => r.json()).then((d) => {
+    fetch(`/api/agents/meta?office=${form.office}`, { cache: 'no-store' }).then((r) => r.json()).then((d) => {
       setSkills(d.skills || []);
-    });
+    }).catch(() => {});
   }, [form.office]);
 
   // Reset on open
@@ -118,30 +118,30 @@ export function CreateAgentModal({ open, onClose, onCreated, preselectedOffice }
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-surface-1 border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl animate-slide-up">
+      <div className="relative bg-surface-1 border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl animate-slide-up flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
               <Bot className="w-5 h-5 text-accent" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-lg font-bold">Create Agent</h2>
-              <p className="text-xs text-text-muted">Step {step + 1} of {STEPS.length}: {STEPS[step]}</p>
+              <p className="text-xs text-text-muted truncate">Step {step + 1} of {STEPS.length}: {STEPS[step]}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-2 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-2 transition-colors flex-shrink-0">
             <X className="w-5 h-5 text-text-muted" />
           </button>
         </div>
 
         {/* Step indicator */}
-        <div className="flex px-6 pt-4 gap-2">
+        <div className="flex px-4 sm:px-6 pt-4 gap-2">
           {STEPS.map((s, i) => (
             <div key={s} className="flex-1">
               <div className={cn(
@@ -154,19 +154,19 @@ export function CreateAgentModal({ open, onClose, onCreated, preselectedOffice }
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5 overflow-y-auto max-h-[60vh] space-y-4">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1 space-y-4">
           {/* Step 0: Basics */}
           {step === 0 && (
             <>
               <Field label="Display Name" placeholder="e.g. Content Writer" value={form.displayName} onChange={(v) => update('displayName', v)} />
               <Field label="Slug" placeholder="auto-generated" value={form.name} onChange={(v) => update('name', v)} hint="Used as filename" />
               <SelectField label="Office" value={form.office} options={offices.map((o) => ({ value: o, label: o.charAt(0).toUpperCase() + o.slice(1) }))} onChange={(v) => update('office', v)} />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <SelectField label="Model" value={form.model} options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: `${m.label} — ${m.desc}` }))} onChange={(v) => update('model', v)} />
                 <Field label="Pipeline Position" type="number" value={String(form.pipelinePosition)} onChange={(v) => update('pipelinePosition', parseInt(v) || 1)} />
               </div>
               <SelectField label="Primary Skill" value={form.skill} options={skills.map((s) => ({ value: s, label: s }))} onChange={(v) => update('skill', v)} placeholder="Select office first" />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Receives From" placeholder="e.g. Content Writer" value={form.receivesFrom} onChange={(v) => update('receivesFrom', v)} />
                 <Field label="Delivers To" placeholder="e.g. Content Reviewer" value={form.deliversTo} onChange={(v) => update('deliversTo', v)} />
               </div>
@@ -204,7 +204,7 @@ export function CreateAgentModal({ open, onClose, onCreated, preselectedOffice }
                 <>
                   <div className="bg-surface-0 rounded-xl p-4 border border-border">
                     <h3 className="font-mono text-xs text-text-muted uppercase tracking-wider mb-3">Summary</h3>
-                    <div className="grid grid-cols-2 gap-y-2 gap-x-6 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6 text-sm">
                       <ReviewRow label="Name" value={form.displayName} />
                       <ReviewRow label="Office" value={form.office} />
                       <ReviewRow label="Model" value={form.model} />
@@ -236,7 +236,7 @@ export function CreateAgentModal({ open, onClose, onCreated, preselectedOffice }
 
         {/* Footer */}
         {!success && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-border">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-t border-border">
             <button
               onClick={() => step > 0 ? setStep(step - 1) : onClose()}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-2 transition-colors"

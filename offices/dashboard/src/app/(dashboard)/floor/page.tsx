@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Header } from '@/components/layout/header';
 import { DeleteAgentModal } from '@/components/modals/delete-agent-modal';
 import { cn } from '@/lib/cn';
+import { refreshState } from '@/lib/api-fetch';
 import type { Agent, OfficeName } from '@/types';
 
 // --- Office floor colors ---
@@ -263,9 +264,9 @@ function OfficeSection({
   const officeActive = agents.some((a) => a.officeActive);
 
   return (
-    <div className={cn('rounded-2xl border p-6', theme.border, theme.bg)}>
+    <div className={cn('rounded-2xl border p-4 sm:p-6', theme.border, theme.bg)}>
       {/* Section header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2">
         <div className="flex items-center gap-3">
           <div className={cn('w-3 h-3 rounded-full', `bg-[${theme.accent}]`)} style={{ backgroundColor: theme.accent }} />
           <h2 className={cn('text-lg font-semibold', theme.label)}>
@@ -324,10 +325,7 @@ export default function FloorPage() {
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
 
   const loadAgents = useCallback(() => {
-    fetch('/api/agents')
-      .then((r) => r.json())
-      .then(setAgents)
-      .catch(() => {});
+    refreshState<Agent[]>('/api/agents', setAgents);
   }, []);
 
   useEffect(() => {
@@ -356,9 +354,9 @@ export default function FloorPage() {
         description={`${working} of ${agents.length} agents working`}
       />
 
-      <div className="p-8 animate-fade-in space-y-8">
+      <div className="p-4 sm:p-6 lg:p-8 animate-fade-in space-y-6 sm:space-y-8">
         {/* Top bar */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Legend />
           <span className="text-xs font-mono text-text-muted">
             Auto-refresh: 8s

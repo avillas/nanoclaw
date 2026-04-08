@@ -7,6 +7,7 @@ import {
   GitCommit, FileText, Search, Shield, BarChart,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { refreshState } from '@/lib/api-fetch';
 import type { ActivityEvent, OfficeName } from '@/types';
 
 const levelConfig: Record<string, { icon: typeof Info; color: string }> = {
@@ -39,10 +40,9 @@ export default function ActivityPage() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
 
   useEffect(() => {
-    fetch('/api/activity').then((r) => r.json()).then(setEvents);
-    const interval = setInterval(() => {
-      fetch('/api/activity').then((r) => r.json()).then(setEvents);
-    }, 10000);
+    const load = () => refreshState<ActivityEvent[]>('/api/activity', setEvents);
+    load();
+    const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -50,7 +50,7 @@ export default function ActivityPage() {
     <>
       <Header title="Activity Feed" description="Real-time log of all agent actions" />
 
-      <div className="p-8 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
         <div className="max-w-4xl">
           {events.map((event, i) => {
             const level = levelConfig[event.level] || levelConfig.info;
@@ -70,12 +70,12 @@ export default function ActivityPage() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-0.5">
                     <span className="text-sm font-medium">{event.agent}</span>
                     <span className={cn('badge', officeBadges[event.office])}>{event.office}</span>
-                    <span className="text-[10px] font-mono text-text-muted ml-auto">{dateStr} {timeStr}</span>
+                    <span className="text-[10px] font-mono text-text-muted sm:ml-auto">{dateStr} {timeStr}</span>
                   </div>
-                  <p className="text-sm text-text-secondary">{event.detail}</p>
+                  <p className="text-sm text-text-secondary break-words">{event.detail}</p>
                 </div>
               </div>
             );

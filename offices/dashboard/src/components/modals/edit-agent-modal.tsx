@@ -61,7 +61,7 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
     setSuccess(false);
     setLoading(true);
 
-    fetch(`/api/agents/${encodeURIComponent(agent.office)}/${encodeURIComponent(agent.slug)}`)
+    fetch(`/api/agents/${encodeURIComponent(agent.office)}/${encodeURIComponent(agent.slug)}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {
@@ -86,7 +86,7 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
   // Load office skill list for the skill dropdown.
   useEffect(() => {
     if (!open || !agent) return;
-    fetch(`/api/agents/meta?office=${encodeURIComponent(agent.office)}`)
+    fetch(`/api/agents/meta?office=${encodeURIComponent(agent.office)}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => setSkills(d.skills || []))
       .catch(() => setSkills([]));
@@ -131,35 +131,35 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
   if (!open || !agent) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-surface-1 border border-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl animate-slide-up flex flex-col">
+      <div className="relative bg-surface-1 border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl animate-slide-up flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
               <Bot className="w-5 h-5 text-accent" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-lg font-bold">Edit Agent</h2>
-              <p className="text-xs text-text-muted">
+              <p className="text-xs text-text-muted truncate">
                 {agent.office} / {agent.slug}.md
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-surface-2 transition-colors"
+            className="p-2 rounded-lg hover:bg-surface-2 transition-colors flex-shrink-0"
           >
             <X className="w-5 h-5 text-text-muted" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-border px-6">
+        <div className="flex border-b border-border px-4 sm:px-6">
           <TabButton
             active={tab === 'attributes'}
             icon={<Settings className="w-3.5 h-3.5" />}
@@ -175,7 +175,7 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5 overflow-y-auto flex-1 space-y-4">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 text-accent animate-spin" />
@@ -194,7 +194,7 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
                 onChange={(v) => updateAttr('displayName', v)}
                 placeholder="e.g. Content Writer"
               />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <SelectField
                   label="Model"
                   value={attrs.model}
@@ -223,7 +223,7 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
                   Available in this office: {skills.join(', ')}
                 </p>
               )}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
                   label="Receives From"
                   value={attrs.receivesFrom}
@@ -252,7 +252,7 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
                 value={rawMarkdown}
                 onChange={(e) => setRawMarkdown(e.target.value)}
                 spellCheck={false}
-                className="w-full h-[55vh] px-3 py-2 bg-surface-0 border border-border rounded-lg text-xs font-mono text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors resize-none leading-relaxed"
+                className="w-full h-[60vh] sm:h-[55vh] px-3 py-2 bg-surface-0 border border-border rounded-lg text-xs font-mono text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors resize-none leading-relaxed"
               />
               <p className="text-[10px] text-text-muted leading-relaxed">
                 Salvar nesta aba sobrescreve o arquivo inteiro com o conteúdo acima.
@@ -271,7 +271,7 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
 
         {/* Footer */}
         {!success && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-border">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-t border-border">
             <button
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-2 transition-colors"

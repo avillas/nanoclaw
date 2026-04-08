@@ -106,28 +106,28 @@ export function CreateOfficeModal({ open, onClose, onCreated }: CreateOfficeModa
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-surface-1 border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl animate-slide-up">
+      <div className="relative bg-surface-1 border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl animate-slide-up flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
               <Building2 className="w-5 h-5 text-purple-400" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-lg font-bold">Create Office</h2>
-              <p className="text-xs text-text-muted">Step {step + 1} of {STEPS.length}: {STEPS[step]}</p>
+              <p className="text-xs text-text-muted truncate">Step {step + 1} of {STEPS.length}: {STEPS[step]}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-2 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-2 transition-colors flex-shrink-0">
             <X className="w-5 h-5 text-text-muted" />
           </button>
         </div>
 
         {/* Step indicator */}
-        <div className="flex px-6 pt-4 gap-2">
+        <div className="flex px-4 sm:px-6 pt-4 gap-2">
           {STEPS.map((s, i) => (
             <div key={s} className="flex-1">
               <div className={cn('h-1 rounded-full transition-colors', i <= step ? 'bg-purple-400' : 'bg-surface-3')} />
@@ -137,7 +137,7 @@ export function CreateOfficeModal({ open, onClose, onCreated }: CreateOfficeModa
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5 overflow-y-auto max-h-[60vh] space-y-4">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1 space-y-4">
           {/* Step 0: Basics */}
           {step === 0 && (
             <>
@@ -145,7 +145,7 @@ export function CreateOfficeModal({ open, onClose, onCreated }: CreateOfficeModa
               <Field label="Slug" placeholder="auto-generated" value={form.name} onChange={(v) => update('name', v)} hint="Used as folder name" />
               <TextArea label="Mission" placeholder="What does this office do? What's its focus?" value={form.mission} onChange={(v) => update('mission', v)} rows={3} />
               <SelectField label="Default Model" value={form.defaultModel} options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: `${m.label} — ${m.desc}` }))} onChange={(v) => update('defaultModel', v)} />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Daily Budget (R$)" type="number" value={String(form.dailyBudget)} onChange={(v) => update('dailyBudget', parseFloat(v) || 0)} />
                 <Field label="Monthly Budget (R$)" type="number" value={String(form.monthlyBudget)} onChange={(v) => update('monthlyBudget', parseFloat(v) || 0)} />
               </div>
@@ -188,7 +188,7 @@ export function CreateOfficeModal({ open, onClose, onCreated }: CreateOfficeModa
                 <>
                   <div className="bg-surface-0 rounded-xl p-4 border border-border">
                     <h3 className="font-mono text-xs text-text-muted uppercase tracking-wider mb-3">Summary</h3>
-                    <div className="grid grid-cols-2 gap-y-2 gap-x-6 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6 text-sm">
                       <ReviewRow label="Name" value={form.displayName} />
                       <ReviewRow label="Slug" value={form.name} />
                       <ReviewRow label="Model" value={form.defaultModel} />
@@ -232,7 +232,7 @@ export function CreateOfficeModal({ open, onClose, onCreated }: CreateOfficeModa
 
         {/* Footer */}
         {!success && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-border">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-t border-border">
             <button
               onClick={() => step > 0 ? setStep(step - 1) : onClose()}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-2 transition-colors"

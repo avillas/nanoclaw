@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Header } from '@/components/layout/header';
 import { DollarSign, TrendingUp, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { refreshState } from '@/lib/api-fetch';
 import type { CostSummary, OfficeName } from '@/types';
 
 const officeThemes: Record<OfficeName, { gradient: string; bar: string; glow: string }> = {
@@ -16,7 +17,7 @@ export default function CostsPage() {
   const [costs, setCosts] = useState<CostSummary[]>([]);
 
   useEffect(() => {
-    fetch('/api/costs').then((r) => r.json()).then(setCosts);
+    refreshState<CostSummary[]>('/api/costs', setCosts);
   }, []);
 
   const totalDaily = costs.reduce((s, c) => s + c.dailySpent, 0);
@@ -28,7 +29,7 @@ export default function CostsPage() {
     <>
       <Header title="Cost Monitor" description="Budget tracking across all offices" />
 
-      <div className="p-8 space-y-8 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 animate-fade-in">
         {/* Summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="card p-6 glow-accent">

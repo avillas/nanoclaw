@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { CreateAgentModal } from '@/components/modals/create-agent-modal';
@@ -9,9 +9,10 @@ import { EditAgentModal } from '@/components/modals/edit-agent-modal';
 import { TelegramConfigModal } from '@/components/modals/telegram-config-modal';
 import {
   Users, CheckCircle, Clock, XCircle, AlertTriangle,
-  ChevronRight, Zap, Plus, Send, Trash2, Pencil, RefreshCw,
+  ChevronRight, Zap, Plus, Send, Trash2, Pencil, RefreshCw, AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { fetchJson, refreshState } from '@/lib/api-fetch';
 import type { Agent, Pipeline, Office, OfficeName, PipelineStageExecution } from '@/types';
 
 interface TelegramStatus {
@@ -45,11 +46,14 @@ const statusColors: Record<string, string> = {
   skipped: 'text-status-warning bg-amber-500/10',
 };
 
+type OfficeDetailData = { office: Office; agents: Agent[]; pipelines: Pipeline[] };
+
 export default function OfficeDetailPage() {
   const params = useParams();
   const slug = params.slug as string;
-  const [data, setData] = useState<{ office: Office; agents: Agent[]; pipelines: Pipeline[] } | null>(null);
+  const [data, setData] = useState<OfficeDetailData | null>(null);
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
   const [editTarget, setEditTarget] = useState<Agent | null>(null);
@@ -61,7 +65,7 @@ export default function OfficeDetailPage() {
     setRebuilding(true);
     setRebuildMsg(null);
     try {
-      const res = await fetch(`/api/offices/${slug}/rebuild`, { method: 'POST' });
+      const res = await fetch(`/api/offices/${slug}/rebuild`, { method: 'POST', cache: 'no-store' });
       const data = await res.json();
       if (res.ok) {
         setRebuildMsg('CLAUDE.md regenerado com sucesso');
@@ -77,20 +81,60 @@ export default function OfficeDetailPage() {
     }
   };
 
-  const loadData = useCallback(() => {
-    fetch(`/api/offices/${slug}`).then((r) => r.json()).then(setData);
-    fetch(`/api/telegram?office=${slug}`).then((r) => r.json()).then(setTelegramStatus).catch(() => {});
+  // Track whether the office has ever loaded successfully — after the first
+  // success, failed refetches are silently ignored so the UI keeps showing
+  // the last good data instead of flashing to "no agents / no telegram".
+  const hasLoadedOnce = useRef(false);
+
+  const loadData = useCallback(async () => {
+    // Fire both fetches in parallel. fetchJson returns null on failure, so we
+    // only update state when we actually got data — that way a transient
+    // mobile network blip won't wipe out the previously rendered office.
+    const [officeData, telegramData] = await Promise.all([
+      fetchJson<OfficeDetailData>(`/api/offices/${slug}`),
+      fetchJson<TelegramStatus>(`/api/telegram?office=${slug}`),
+    ]);
+    if (officeData !== null) {
+      setData(officeData);
+      setLoadError(false);
+      hasLoadedOnce.current = true;
+    } else if (!hasLoadedOnce.current) {
+      // Initial load failed and we have nothing to show — surface the error
+      // instead of spinning forever.
+      setLoadError(true);
+    }
+    if (telegramData !== null) {
+      setTelegramStatus(telegramData);
+    }
   }, [slug]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  if (!data && loadError) {
+    return (
+      <>
+        <Header title="Office" />
+        <div className="p-4 sm:p-6 lg:p-8 flex flex-col items-center gap-4">
+          <AlertCircle className="w-10 h-10 text-status-error" />
+          <p className="text-sm text-text-secondary">Falha ao carregar este escritório.</p>
+          <button
+            onClick={() => { setLoadError(false); loadData(); }}
+            className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accent/90 transition-colors"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </>
+    );
+  }
+
   if (!data) {
     return (
       <>
         <Header title="Loading..." />
-        <div className="p-8 flex justify-center"><div className="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin" /></div>
+        <div className="p-4 sm:p-6 lg:p-8 flex justify-center"><div className="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin" /></div>
       </>
     );
   }
@@ -105,36 +149,38 @@ export default function OfficeDetailPage() {
     <>
       <Header title={office.displayName} description={office.description} />
 
-      <div className="p-8 space-y-8 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 animate-fade-in">
 
         {/* Telegram status card */}
         <div className={cn(
-          'card p-4 flex items-center gap-4',
+          'card p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4',
           tgConfigured ? 'border-green-500/20' : 'border-amber-500/20'
         )}>
-          <div className={cn(
-            'w-10 h-10 rounded-lg flex items-center justify-center',
-            tgConfigured ? 'bg-green-500/10' : 'bg-amber-500/10'
-          )}>
-            <Send className={cn('w-5 h-5', tgConfigured ? 'text-status-online' : 'text-status-warning')} />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium">
-              Telegram {tgConfigured ? 'Conectado' : telegramStatus?.hasGlobalBot ? 'Sem Grupo' : 'Bot Não Configurado'}
-            </p>
-            <p className="text-xs text-text-muted">
-              {tgConfigured
-                ? `Grupo: ${telegramStatus!.groupId}`
-                : telegramStatus?.hasGlobalBot
-                  ? 'Vincule um grupo do Telegram para este escritório'
-                  : 'Configure o bot na página Telegram primeiro'
-              }
-            </p>
+          <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+            <div className={cn(
+              'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+              tgConfigured ? 'bg-green-500/10' : 'bg-amber-500/10'
+            )}>
+              <Send className={cn('w-5 h-5', tgConfigured ? 'text-status-online' : 'text-status-warning')} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">
+                Telegram {tgConfigured ? 'Conectado' : telegramStatus?.hasGlobalBot ? 'Sem Grupo' : 'Bot Não Configurado'}
+              </p>
+              <p className="text-xs text-text-muted truncate">
+                {tgConfigured
+                  ? `Grupo: ${telegramStatus!.groupId}`
+                  : telegramStatus?.hasGlobalBot
+                    ? 'Vincule um grupo do Telegram para este escritório'
+                    : 'Configure o bot na página Telegram primeiro'
+                }
+              </p>
+            </div>
           </div>
           <button
             onClick={() => telegramStatus?.hasGlobalBot ? setShowTelegramConfig(true) : window.location.assign('/telegram')}
             className={cn(
-              'px-4 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5',
+              'w-full sm:w-auto justify-center px-4 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5',
               tgConfigured
                 ? 'bg-surface-2 text-text-secondary hover:bg-surface-3'
                 : 'bg-blue-500 text-white hover:bg-blue-500/90'
@@ -147,13 +193,13 @@ export default function OfficeDetailPage() {
 
         {/* Agent grid */}
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <h2 className="text-sm font-mono text-text-muted uppercase tracking-widest">
               Agents ({workingAgents.length} active / {agents.length} total)
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {rebuildMsg && (
-                <span className="text-xs text-text-muted">{rebuildMsg}</span>
+                <span className="text-xs text-text-muted w-full sm:w-auto">{rebuildMsg}</span>
               )}
               <button
                 onClick={handleRebuild}
@@ -162,7 +208,8 @@ export default function OfficeDetailPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-2 text-text-secondary hover:bg-surface-3 transition-colors disabled:opacity-50"
               >
                 <RefreshCw className={cn('w-3.5 h-3.5', rebuilding && 'animate-spin')} />
-                {rebuilding ? 'Rebuilding...' : 'Rebuild CLAUDE.md'}
+                <span className="hidden sm:inline">{rebuilding ? 'Rebuilding...' : 'Rebuild CLAUDE.md'}</span>
+                <span className="sm:hidden">{rebuilding ? '...' : 'Rebuild'}</span>
               </button>
               <button
                 onClick={() => setShowCreateAgent(true)}
@@ -180,7 +227,7 @@ export default function OfficeDetailPage() {
                 className={cn('card p-4 animate-slide-up group/card relative', agent.status === 'working' && 'border-accent/30')}
                 style={{ animationDelay: `${i * 30}ms` }}
               >
-                <div className="absolute top-2 right-2 flex items-center gap-1 transition-all opacity-0 group-hover/card:opacity-100">
+                <div className="absolute top-2 right-2 flex items-center gap-1 transition-all opacity-100 lg:opacity-0 lg:group-hover/card:opacity-100">
                   <button
                     onClick={() => setEditTarget(agent)}
                     className="p-1 rounded hover:bg-accent/10 text-text-muted hover:text-accent transition-colors"

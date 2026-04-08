@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/header';
 import { CreateOfficeModal } from '@/components/modals/create-office-modal';
 import { Building2, Users, GitBranch, DollarSign, ArrowRight, Plus } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { refreshState } from '@/lib/api-fetch';
 import type { Office, OfficeName } from '@/types';
 
 const DEFAULT_COLORS = {
@@ -30,7 +31,7 @@ export default function OfficesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const loadOffices = useCallback(() => {
-    fetch('/api/offices').then((r) => r.json()).then(setOffices);
+    refreshState<Office[]>('/api/offices', setOffices);
   }, []);
 
   useEffect(() => {
@@ -40,7 +41,7 @@ export default function OfficesPage() {
   return (
     <>
       <Header title="Offices" description="Manage your AI agent offices" />
-      <div className="p-8 space-y-4 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-4 animate-fade-in">
         {/* Create button */}
         <div className="flex justify-end mb-2">
           <button
@@ -57,28 +58,28 @@ export default function OfficesPage() {
             key={office.name}
             href={`/offices/${office.name}`}
             className={cn(
-              'card-hover p-6 flex items-center gap-6 border-l-4 animate-slide-up group',
+              'card-hover p-4 sm:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-6 border-l-4 animate-slide-up group',
               colorMap[office.name] || DEFAULT_COLORS.border
             )}
             style={{ animationDelay: `${i * 80}ms` }}
           >
-            <div className="flex-1">
-              <h3 className={cn('text-lg font-bold', gradientMap[office.name] || DEFAULT_COLORS.gradient)}>{office.displayName}</h3>
-              <p className="text-sm text-text-muted mt-1">{office.description}</p>
+            <div className="flex-1 min-w-0">
+              <h3 className={cn('text-base sm:text-lg font-bold', gradientMap[office.name] || DEFAULT_COLORS.gradient)}>{office.displayName}</h3>
+              <p className="text-xs sm:text-sm text-text-muted mt-1">{office.description}</p>
             </div>
 
-            <div className="flex items-center gap-8 text-sm">
+            <div className="grid grid-cols-4 gap-3 sm:gap-4 md:gap-8 text-sm md:flex md:items-center">
               <div className="text-center">
                 <p className="stat-label mb-1">Agents</p>
-                <p className="font-mono font-bold">{office.activeAgents}/{office.agentCount}</p>
+                <p className="font-mono font-bold text-xs sm:text-sm">{office.activeAgents}/{office.agentCount}</p>
               </div>
               <div className="text-center">
                 <p className="stat-label mb-1">Pipeline</p>
-                <p className="font-mono font-bold">{office.pipeline.length} stages</p>
+                <p className="font-mono font-bold text-xs sm:text-sm">{office.pipeline.length} <span className="hidden sm:inline">stages</span></p>
               </div>
               <div className="text-center">
                 <p className="stat-label mb-1">Daily Cost</p>
-                <p className="font-mono font-bold">R$ {office.dailySpent.toFixed(2)}</p>
+                <p className="font-mono font-bold text-xs sm:text-sm">R$ {office.dailySpent.toFixed(2)}</p>
               </div>
               <div className="text-center">
                 <p className="stat-label mb-1">Status</p>
@@ -88,7 +89,7 @@ export default function OfficesPage() {
               </div>
             </div>
 
-            <ArrowRight className="w-5 h-5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ArrowRight className="hidden md:block w-5 h-5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
           </Link>
         ))}
       </div>

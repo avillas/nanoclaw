@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Header } from '@/components/layout/header';
+import { refreshState } from '@/lib/api-fetch';
 import {
   Bot, GitBranch, CheckCircle, DollarSign,
   TrendingUp, ArrowUpRight, ArrowDownRight, Minus,
@@ -20,10 +21,9 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardKPIs | null>(null);
 
   useEffect(() => {
-    fetch('/api/dashboard').then((r) => r.json()).then(setData);
-    const interval = setInterval(() => {
-      fetch('/api/dashboard').then((r) => r.json()).then(setData);
-    }, 15000);
+    const load = () => refreshState<DashboardKPIs>('/api/dashboard', setData);
+    load();
+    const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -31,7 +31,7 @@ export default function DashboardPage() {
     return (
       <>
         <Header title="Dashboard" description="Loading..." />
-        <div className="p-8 flex items-center justify-center h-64">
+        <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center h-64">
           <div className="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
         </div>
       </>
@@ -51,7 +51,7 @@ export default function DashboardPage() {
     <>
       <Header title="Dashboard" description="Real-time overview of all NanoClaw offices" />
 
-      <div className="p-8 space-y-8 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 animate-fade-in">
         {/* KPI Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {kpis.map((kpi, i) => (
