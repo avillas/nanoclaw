@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getPipelineExecutions, getPipelineStages } from '@/lib/db';
 import { getOffices } from '@/lib/offices-reader';
-import { readActiveSubagents } from '@/lib/active-agent';
+import { readActiveSubagents, stageNameMatchesMarker } from '@/lib/active-agent';
 import type { Pipeline, PipelineStageExecution } from '@/types';
 
 export async function GET(req: Request) {
@@ -57,9 +57,8 @@ export async function GET(req: Request) {
     // Show the pipeline definition, marking the matching stage as running
     // when we have an active-agent marker for this office.
     const stages: PipelineStageExecution[] = office.pipeline.map((s) => {
-      const slugified = s.agentName.toLowerCase().replace(/\s+/g, '-');
       const isRunning =
-        !!marker && slugified === marker.subagent.toLowerCase();
+        !!marker && stageNameMatchesMarker(s.agentName, marker.subagent);
       return {
         position: s.position,
         agentName: s.agentName,

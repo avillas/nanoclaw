@@ -82,6 +82,34 @@ export function isAgentActive(
 }
 
 /**
+ * True when a workflow stage display name corresponds to the sub-agent
+ * recorded in a marker. Used by /api/pipelines and /api/offices/[slug] which
+ * only have the human-readable stage name from the office's workflow table —
+ * they cannot do an exact slug comparison the way /api/agents does.
+ *
+ * Tries exact slug match first, then prefix matching in either direction so
+ * a stage labeled "Competitive Intelligence" still matches an agent file
+ * `competitive-intelligence-analyst.md`. This is the kind of drift that
+ * happens whenever a workflow table is written more concisely than the
+ * agent identity filenames.
+ */
+export function stageNameMatchesMarker(
+  stageName: string,
+  markerSubagent: string,
+): boolean {
+  const stageSlug = stageName.toLowerCase().trim().replace(/\s+/g, '-');
+  const markerSlug = markerSubagent.toLowerCase().trim();
+  if (!stageSlug || !markerSlug) return false;
+  if (stageSlug === markerSlug) return true;
+  // Workflow display name is shorter than the agent file:
+  // marker "competitive-intelligence-analyst" vs stage "competitive-intelligence"
+  if (markerSlug.startsWith(stageSlug + '-')) return true;
+  // Workflow display name is more verbose than the agent file (rare but possible)
+  if (stageSlug.startsWith(markerSlug + '-')) return true;
+  return false;
+}
+
+/**
  * Stamps every agent that matches an active marker as `working`. Returns a
  * fresh array; the input is not mutated.
  */

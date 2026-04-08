@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getOfficeByName, getAgentsByOffice } from '@/lib/offices-reader';
 import { getPipelineExecutions, getPipelineStages } from '@/lib/db';
-import { readActiveSubagents, enrichAgentsWithActive } from '@/lib/active-agent';
+import {
+  readActiveSubagents,
+  enrichAgentsWithActive,
+  stageNameMatchesMarker,
+} from '@/lib/active-agent';
 import type { OfficeName, Pipeline, PipelineStageExecution } from '@/types';
 
 export async function GET(
@@ -56,10 +60,10 @@ export async function GET(
   const hasRunningExec = executedPipelines.some((p) => p.status === 'running');
   if (activeMarker && !hasRunningExec && office.pipeline.length > 0) {
     const stages: PipelineStageExecution[] = office.pipeline.map((s) => {
-      const slugMatches =
-        s.agentName
-          .toLowerCase()
-          .replace(/\s+/g, '-') === activeMarker.subagent.toLowerCase();
+      const slugMatches = stageNameMatchesMarker(
+        s.agentName,
+        activeMarker.subagent,
+      );
       return {
         position: s.position,
         agentName: s.agentName,
