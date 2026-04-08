@@ -168,6 +168,57 @@
   .pipeline-connector:last-child::after {
     display: none;
   }
+
+  /* ---- Pixel-art floor (used by /floor page) ---- */
+  .pixel-art {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+  }
+
+  .pixel-floor-pattern {
+    background-color: var(--surface-2);
+    background-image:
+      repeating-linear-gradient(0deg, transparent 0 31px, rgba(255, 255, 255, 0.025) 31px 32px),
+      repeating-linear-gradient(90deg, transparent 0 31px, rgba(255, 255, 255, 0.025) 31px 32px);
+  }
+
+  @keyframes pixel-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+  }
+
+  @keyframes pixel-flicker {
+    0%, 88%, 92%, 100% { opacity: 1; }
+    90% { opacity: 0.45; }
+  }
+
+  @keyframes pixel-bubble {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-1px) scale(1.05); }
+  }
+
+  @keyframes pixel-cursor-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0.2; }
+  }
+
+  .animate-pixel-bob {
+    animation: pixel-bob 1.4s ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  .animate-pixel-flicker {
+    animation: pixel-flicker 3.2s linear infinite;
+  }
+
+  .animate-pixel-bubble {
+    animation: pixel-bubble 2s ease-in-out infinite;
+  }
+
+  .animate-pixel-cursor {
+    animation: pixel-cursor-blink 1.1s steps(1, end) infinite;
+  }
 }
 
 @layer utilities {
