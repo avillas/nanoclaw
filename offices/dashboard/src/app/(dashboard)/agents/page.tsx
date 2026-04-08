@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { Header } from '@/components/layout/header';
 import { CreateAgentModal } from '@/components/modals/create-agent-modal';
 import { DeleteAgentModal } from '@/components/modals/delete-agent-modal';
-import { Bot, Cpu, HardDrive, Clock, Zap, Filter, Plus, Trash2 } from 'lucide-react';
+import { EditAgentModal } from '@/components/modals/edit-agent-modal';
+import { Bot, Cpu, HardDrive, Clock, Zap, Filter, Plus, Trash2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { Agent, OfficeName } from '@/types';
 
@@ -36,6 +37,7 @@ export default function AgentsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
+  const [editTarget, setEditTarget] = useState<Agent | null>(null);
 
   const loadAgents = useCallback(() => {
     fetch('/api/agents').then((r) => r.json()).then(setAgents);
@@ -110,7 +112,7 @@ export default function AgentsPage() {
                 <th className="text-left px-4 py-3 text-[10px] font-mono text-text-muted uppercase tracking-widest">Container</th>
                 <th className="text-right px-4 py-3 text-[10px] font-mono text-text-muted uppercase tracking-widest">Tasks</th>
                 <th className="text-right px-4 py-3 text-[10px] font-mono text-text-muted uppercase tracking-widest">Cost Today</th>
-                <th className="w-10 px-4 py-3"></th>
+                <th className="w-20 px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -152,13 +154,22 @@ export default function AgentsPage() {
                     <td className="px-4 py-3 text-right font-mono text-sm">{agent.tasksCompleted}</td>
                     <td className="px-4 py-3 text-right font-mono text-sm">R$ {agent.costToday.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => setDeleteTarget(agent)}
-                        className="p-1 rounded hover:bg-status-error/10 text-text-muted hover:text-status-error transition-colors"
-                        title={`Remove ${agent.name}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setEditTarget(agent)}
+                          className="p-1 rounded hover:bg-accent/10 text-text-muted hover:text-accent transition-colors"
+                          title={`Edit ${agent.name}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(agent)}
+                          className="p-1 rounded hover:bg-status-error/10 text-text-muted hover:text-status-error transition-colors"
+                          title={`Remove ${agent.name}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -179,6 +190,13 @@ export default function AgentsPage() {
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onDeleted={loadAgents}
+      />
+
+      <EditAgentModal
+        agent={editTarget}
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={loadAgents}
       />
     </>
   );

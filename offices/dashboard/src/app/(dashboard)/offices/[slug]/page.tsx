@@ -5,10 +5,11 @@ import { useParams } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { CreateAgentModal } from '@/components/modals/create-agent-modal';
 import { DeleteAgentModal } from '@/components/modals/delete-agent-modal';
+import { EditAgentModal } from '@/components/modals/edit-agent-modal';
 import { TelegramConfigModal } from '@/components/modals/telegram-config-modal';
 import {
   Users, CheckCircle, Clock, XCircle, AlertTriangle,
-  ChevronRight, Zap, Plus, Send, Trash2, RefreshCw,
+  ChevronRight, Zap, Plus, Send, Trash2, Pencil, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { Agent, Pipeline, Office, OfficeName, PipelineStageExecution } from '@/types';
@@ -51,6 +52,7 @@ export default function OfficeDetailPage() {
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
+  const [editTarget, setEditTarget] = useState<Agent | null>(null);
   const [showTelegramConfig, setShowTelegramConfig] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
@@ -178,13 +180,22 @@ export default function OfficeDetailPage() {
                 className={cn('card p-4 animate-slide-up group/card relative', agent.status === 'working' && 'border-accent/30')}
                 style={{ animationDelay: `${i * 30}ms` }}
               >
-                <button
-                  onClick={() => setDeleteTarget(agent)}
-                  className="absolute top-2 right-2 p-1 rounded hover:bg-status-error/10 text-text-muted hover:text-status-error transition-all opacity-0 group-hover/card:opacity-100"
-                  title={`Remove ${agent.name}`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="absolute top-2 right-2 flex items-center gap-1 transition-all opacity-0 group-hover/card:opacity-100">
+                  <button
+                    onClick={() => setEditTarget(agent)}
+                    className="p-1 rounded hover:bg-accent/10 text-text-muted hover:text-accent transition-colors"
+                    title={`Edit ${agent.name}`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setDeleteTarget(agent)}
+                    className="p-1 rounded hover:bg-status-error/10 text-text-muted hover:text-status-error transition-colors"
+                    title={`Remove ${agent.name}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
                 <div className="flex items-center gap-3 mb-2">
                   <span className={cn('w-2 h-2 rounded-full', agent.status === 'working' ? 'bg-status-online animate-pulse' : agent.status === 'error' ? 'bg-status-error' : 'bg-status-offline')} />
                   <span className="text-sm font-medium truncate">{agent.name}</span>
@@ -253,6 +264,13 @@ export default function OfficeDetailPage() {
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onDeleted={loadData}
+      />
+
+      <EditAgentModal
+        agent={editTarget}
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={loadData}
       />
 
       <TelegramConfigModal

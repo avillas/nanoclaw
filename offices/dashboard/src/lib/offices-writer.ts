@@ -334,6 +334,166 @@ ${input.modelEscalation}
 }
 
 // ---------------------------------------------------------------------------
+// Agent read (raw file content)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the raw markdown content of an agent file plus parsed frontmatter
+ * and an extracted display name (from the H1 heading). Used by the edit modal
+ * to populate both its structured form and its raw markdown editor.
+ */
+export function getAgentRawContent(
+  office: string,
+  name: string,
+): {
+  success: boolean;
+  rawContent?: string;
+  frontmatter?: Record<string, string>;
+  displayName?: string;
+  error?: string;
+} {
+  const root = getOfficesRoot();
+  const filePath = path.join(root, office, 'agents', `${name}.md`);
+
+  if (!fs.existsSync(filePath)) {
+    return { success: false, error: `Agent "${name}" not found in office "${office}"` };
+  }
+
+  const rawContent = fs.readFileSync(filePath, 'utf-8');
+  const frontmatter = parseFrontmatter(rawContent);
+  const displayName = extractH1(rawContent, name);
+
+  return { success: true, rawContent, frontmatter, displayName };
+}
+
+// ---------------------------------------------------------------------------
+// Agent update
+// ---------------------------------------------------------------------------
+
+/**
+ * Update only the YAML frontmatter of an agent file. Preserves key order,
+ * preserves unknown keys, and only modifies fields explicitly passed in
+ * `updates`. Returns the new full file content.
+ */
+function applyFrontmatterUpdates(
+  content: string,
+  updates: Record<string, string>,
+): string {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) {
+    // No frontmatter — synthesize one at the top.
+    const fm = Object.entries(updates)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('\n');
+    return `---\n${fm}\n---\n${content}`;
+  }
+
+  const fmBlock = match[1];
+  const lines = fmBlock.split('\n');
+  const seen = new Set<string>();
+  const newLines = lines.map((line) => {
+    const idx = line.indexOf(':');
+    if (idx <= 0) return line;
+    const key = line.slice(0, idx).trim();
+    if (key in updates) {
+      seen.add(key);
+      return `${key}: ${updates[key]}`;
+    }
+    return line;
+  });
+  // Append any new keys not previously present.
+  for (const [key, val] of Object.entries(updates)) {
+    if (!seen.has(key)) {
+      newLines.push(`${key}: ${val}`);
+    }
+  }
+  const newFmBlock = newLines.join('\n');
+  return content.replace(/^---\n[\s\S]*?\n---/, `---\n${newFmBlock}\n---`);
+}
+
+/**
+ * Replace the first H1 in the body with `newDisplayName`. If no H1 exists,
+ * inject one immediately after the closing frontmatter fence (or at the top
+ * of the file if there is no frontmatter).
+ */
+function applyDisplayNameUpdate(content: string, newDisplayName: string): string {
+  // Split off the frontmatter (if any) and operate on the body alone — that
+  // way the H1 regex can't accidentally match against `---` fences or the
+  // raw key/value lines inside the frontmatter block.
+  const fmMatch = content.match(/^(---\n[\s\S]*?\n---\n?)/);
+  const fm = fmMatch ? fmMatch[1] : '';
+  const body = content.slice(fm.length);
+
+  if (/^#\s+.+/m.test(body)) {
+    const newBody = body.replace(/^#\s+.+/m, `# ${newDisplayName}`);
+    return fm + newBody;
+  }
+  return `${fm}# ${newDisplayName}\n\n${body}`;
+}
+
+export interface UpdateAgentAttributes {
+  displayName?: string;
+  skill?: string;
+  model?: string;
+  pipelinePosition?: number;
+  receivesFrom?: string;
+  deliversTo?: string;
+}
+
+export type UpdateAgentInput =
+  | { mode: 'attributes'; attributes: UpdateAgentAttributes }
+  | { mode: 'markdown'; rawMarkdown: string };
+
+export function updateAgent(
+  office: string,
+  name: string,
+  input: UpdateAgentInput,
+): { success: boolean; error?: string } {
+  const root = getOfficesRoot();
+  const filePath = path.join(root, office, 'agents', `${name}.md`);
+
+  if (!fs.existsSync(filePath)) {
+    return { success: false, error: `Agent "${name}" not found in office "${office}"` };
+  }
+
+  let newContent: string;
+
+  if (input.mode === 'markdown') {
+    if (typeof input.rawMarkdown !== 'string' || input.rawMarkdown.trim().length === 0) {
+      return { success: false, error: 'rawMarkdown must be a non-empty string' };
+    }
+    newContent = input.rawMarkdown;
+  } else {
+    const current = fs.readFileSync(filePath, 'utf-8');
+    const updates: Record<string, string> = {};
+    const a = input.attributes || {};
+    if (a.skill !== undefined) updates.skill = a.skill;
+    if (a.model !== undefined) updates.model = a.model;
+    if (a.pipelinePosition !== undefined) updates.pipeline_position = String(a.pipelinePosition);
+    if (a.receivesFrom !== undefined) updates.receives_from = a.receivesFrom;
+    if (a.deliversTo !== undefined) updates.delivers_to = a.deliversTo;
+
+    let updated = Object.keys(updates).length > 0
+      ? applyFrontmatterUpdates(current, updates)
+      : current;
+
+    if (a.displayName !== undefined && a.displayName.trim().length > 0) {
+      updated = applyDisplayNameUpdate(updated, a.displayName.trim());
+    }
+    newContent = updated;
+  }
+
+  fs.writeFileSync(filePath, newContent, 'utf-8');
+
+  // Keep CLAUDE.md (and any compiled group) in sync — model/position/display
+  // name may all affect the rendered Team table.
+  regenerateOfficeClaudeMd(office);
+
+  invalidateCache();
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
 // Agent deletion
 // ---------------------------------------------------------------------------
 export function deleteAgent(
