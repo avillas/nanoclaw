@@ -503,51 +503,11 @@ Use available_groups.json to find the JID for a group. The folder name must be c
   },
 );
 
-server.tool(
-  'report_token_usage',
-  `Report token usage and cost for a completed task or agent session.
-Call this after completing significant work to track costs.
-• tokens_in: total input tokens consumed
-• tokens_out: total output tokens generated
-• tokens_cache_read: cache read tokens (if available, default 0)
-• tokens_cache_write: cache write tokens (if available, default 0)
-• model: which model was used (opus, sonnet, haiku, ollama)
-• agent_name: which agent performed the work (e.g., "Product Manager", "Content Writer")`,
-  {
-    tokens_in: z.number().describe('Input tokens consumed'),
-    tokens_out: z.number().describe('Output tokens generated'),
-    tokens_cache_read: z.number().default(0).describe('Cache read tokens'),
-    tokens_cache_write: z
-      .number()
-      .default(0)
-      .describe('Cache write tokens'),
-    model: z
-      .string()
-      .describe('Model used: opus, sonnet, haiku, or ollama model name'),
-    agent_name: z
-      .string()
-      .describe('Agent name that performed the work'),
-  },
-  async (args) => {
-    const costReport = {
-      type: 'token_usage',
-      timestamp: new Date().toISOString(),
-      agent_name: args.agent_name,
-      model: args.model,
-      tokens_in: args.tokens_in,
-      tokens_out: args.tokens_out,
-      tokens_cache_read: args.tokens_cache_read,
-      tokens_cache_write: args.tokens_cache_write,
-    };
-
-    const costsDir = path.join(IPC_DIR, 'costs');
-    writeIpcFile(costsDir, costReport);
-
-    return {
-      content: [{ type: 'text' as const, text: 'Token usage recorded.' }],
-    };
-  },
-);
+// NOTE: the `report_token_usage` MCP tool was removed. Cost tracking is now
+// automatic — the agent-runner extracts per-model usage from the SDK's result
+// message on every query and writes to /workspace/ipc/costs/ directly. Letting
+// the LLM still call this tool would double-count costs for offices whose
+// orchestrator (notably innovation) had been calling it on its own initiative.
 
 server.tool(
   'report_pipeline_progress',

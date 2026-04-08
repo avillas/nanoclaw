@@ -170,6 +170,49 @@ function deriveOfficeFromGroupFolder(folder: string): string {
   return m ? m[1] : folder;
 }
 
+/**
+ * Write a cost record to /workspace/ipc/costs/ in the format the host
+ * orchestrator (src/ipc.ts processCostFile) expects. The host watcher picks
+ * up the file, computes BRL cost from the model+token data and inserts a row
+ * into the agent_costs table.
+ *
+ * Until now this was only ever called by the `report_token_usage` MCP tool —
+ * which the LLM had to choose to invoke. As a result only the innovation
+ * office (whose orchestrator happened to call it) had any cost history. The
+ * agent-runner now writes one of these files automatically every time the
+ * SDK emits a `result` message, using the per-model usage data the SDK
+ * already provides for free, so all offices get accurate accounting without
+ * any prompt-engineering.
+ */
+function writeCostRecord(record: {
+  agent_name: string;
+  model: string;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cache_read: number;
+  tokens_cache_write: number;
+  container_name: string;
+  cost_usd?: number;
+}): void {
+  const costsDir = '/workspace/ipc/costs';
+  try {
+    fs.mkdirSync(costsDir, { recursive: true });
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`;
+    const tempPath = path.join(costsDir, `${filename}.tmp`);
+    const finalPath = path.join(costsDir, filename);
+    const payload = {
+      type: 'token_usage',
+      timestamp: new Date().toISOString(),
+      date: new Date().toISOString().split('T')[0],
+      ...record,
+    };
+    fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2));
+    fs.renameSync(tempPath, finalPath);
+  } catch (err) {
+    log(`[cost] Failed to write cost record: ${(err as Error).message}`);
+  }
+}
+
 function readPipelineState(sessionId: string): {
   nextPosition: number;
   totalStages: number;
@@ -1015,6 +1058,72 @@ async function runQuery(
       log(
         `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
       );
+
+      // Automatic cost accounting — the SDK provides per-model usage data
+      // (tokens + costUSD) on every result message. Write one cost record per
+      // model used in the query so the host orchestrator can persist it. This
+      // replaces relying on the LLM to voluntarily call report_token_usage,
+      // which only the innovation office's orchestrator was actually doing.
+      const resultMsg = message as {
+        modelUsage?: Record<
+          string,
+          {
+            inputTokens?: number;
+            outputTokens?: number;
+            cacheReadInputTokens?: number;
+            cacheCreationInputTokens?: number;
+            costUSD?: number;
+          }
+        >;
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
+        };
+        total_cost_usd?: number;
+      };
+
+      const office = deriveOfficeFromGroupFolder(containerInput.groupFolder);
+      const containerName = containerInput.assistantName || office;
+
+      if (resultMsg.modelUsage && Object.keys(resultMsg.modelUsage).length > 0) {
+        for (const [modelId, mu] of Object.entries(resultMsg.modelUsage)) {
+          writeCostRecord({
+            agent_name: `${office} orchestrator`,
+            model: modelId,
+            tokens_in: mu.inputTokens ?? 0,
+            tokens_out: mu.outputTokens ?? 0,
+            tokens_cache_read: mu.cacheReadInputTokens ?? 0,
+            tokens_cache_write: mu.cacheCreationInputTokens ?? 0,
+            container_name: containerName,
+            cost_usd: mu.costUSD,
+          });
+        }
+        log(
+          `Result #${resultCount}: recorded cost for ${Object.keys(resultMsg.modelUsage).length} model(s)`,
+        );
+      } else if (resultMsg.usage) {
+        // Fallback when modelUsage is missing — use the consolidated usage
+        // block. Model is unknown so the host's pricing table will assume
+        // sonnet (its documented default).
+        writeCostRecord({
+          agent_name: `${office} orchestrator`,
+          model: 'unknown',
+          tokens_in: resultMsg.usage.input_tokens ?? 0,
+          tokens_out: resultMsg.usage.output_tokens ?? 0,
+          tokens_cache_read: resultMsg.usage.cache_read_input_tokens ?? 0,
+          tokens_cache_write: resultMsg.usage.cache_creation_input_tokens ?? 0,
+          container_name: containerName,
+          cost_usd: resultMsg.total_cost_usd,
+        });
+        log(`Result #${resultCount}: recorded fallback cost from usage block`);
+      } else {
+        log(
+          `Result #${resultCount}: no usage data on message — cost not recorded`,
+        );
+      }
+
       writeOutput({
         status: 'success',
         result: textResult || null,
