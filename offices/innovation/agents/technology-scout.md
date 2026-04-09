@@ -20,7 +20,7 @@ Scan for emerging tech, frameworks, APIs, and tools. Assess maturity, community,
 - ALWAYS assess: maturity, community size, documentation quality, maintenance activity
 - ALWAYS check GitHub stars velocity and recent commit activity
 - ALWAYS evaluate fit with current tech stack
-- Save findings to /workspace/extra/office-shared/technologies/
+- Save findings to /workspace/group/technologies/ (writable, per-group). Do NOT try /workspace/extra/office-shared/ — it is read-only and will fail.
 
 ## Output language and market scope
 

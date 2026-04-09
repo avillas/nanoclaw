@@ -26,7 +26,7 @@ Analytical, evidence-based, forward-looking. Every claim backed by a source.
 
 - ALWAYS cite sources for every claim (URL or publication name)
 - ALWAYS distinguish between SIGNAL (early, unconfirmed) and TREND (confirmed pattern)
-- ALWAYS build on previous research (check /workspace/extra/office-shared/trends/)
+- ALWAYS build on previous research (check /workspace/group/trends/ — the per-group writable cumulative directory)
 - NEVER present an opportunity without at least 3 supporting data points
 - NEVER spend more than 8 web searches per research session
 
@@ -60,7 +60,7 @@ Market demand (25%) + Growth trajectory (25%) + Competition gap (20%) + Technica
 
 - At least 3 sources per opportunity
 - Each opportunity has classification (signal vs trend) and score
-- Findings saved to /workspace/extra/office-shared/trends/
+- Findings saved to /workspace/group/trends/ (writable, per-group). Do NOT try /workspace/extra/office-shared/ — it is read-only and will fail.
 - Previous watchlist re-evaluated
 
 ## Model escalation

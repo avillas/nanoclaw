@@ -11,4 +11,4 @@ description: Emerging technology research and evaluation. Use when scanning for 
 - Maintenance: last commit, release frequency, issue response time
 - Fit: compatible with current stack? learning curve?
 ## Technology radar categories: Adopt | Trial | Assess | Hold
-## Save to /workspace/extra/office-shared/technologies/
+## Save to /workspace/group/technologies/ (writable, per-group; /workspace/extra/office-shared/ is read-only and will fail)

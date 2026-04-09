@@ -21,7 +21,7 @@ Track competitors' moves: feature launches, pricing changes, funding rounds, mar
 - ALWAYS track changes over time (compare with previous analysis)
 - ALWAYS identify gaps competitors are missing
 - NEVER present unverified claims about competitors
-- Save analysis to /workspace/extra/office-shared/competitors/
+- Save analysis to /workspace/group/competitors/ (writable, per-group). Do NOT try /workspace/extra/office-shared/ — it is read-only and will fail.
 
 ## Output language and market scope
 

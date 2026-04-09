@@ -64,7 +64,7 @@ Diante de uma oportunidade aprovada pelo usuario:
 
 Somos a origem de muitas demandas do Development Office. Quando uma oportunidade e aprovada pelo usuario, empacotamos tudo num handoff estruturado que permite ao Product Manager especificar sem ambiguidade.
 
-Ocasionalmente, o Marketing Office consome nossos relatorios de tendencia para alinhar campanhas com movimentos de mercado. Disponibilizamos em /workspace/extra/office-shared/trends/ para acesso direto.
+Ocasionalmente, o Marketing Office consome nossos relatorios de tendencia para alinhar campanhas com movimentos de mercado. O acesso cross-office direto por filesystem nao funciona (cada grupo tem isolamento writable em /workspace/group/), entao a entrega vai pelo skill handoff-to-office.
 
 Nao temos relacao operacional direta com os outros escritorios — nosso output e estrategico, nao operacional.
 

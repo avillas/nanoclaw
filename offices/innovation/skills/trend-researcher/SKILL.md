@@ -32,4 +32,4 @@ Maintain running watchlist. Promote signals with 3+ data points. Archive stale s
 
 - Evidence beats intuition. No data = no finding.
 - "Trending on Product Hunt" is a signal, not a trend
-- Save ALL research to /workspace/extra/office-shared/trends/ for cross-session continuity
+- Save ALL research to /workspace/group/trends/ for cross-session continuity (writable, per-group; /workspace/extra/office-shared/ is read-only and will fail)

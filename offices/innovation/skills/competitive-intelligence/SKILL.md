@@ -11,4 +11,4 @@ description: Competitor monitoring and analysis. Use when tracking competitor fe
 - Recent moves (last 90 days): launches, hires, partnerships
 - Strengths and weaknesses
 ## Gap analysis: what needs are competitors NOT serving?
-## Save to /workspace/extra/office-shared/competitors/ for cross-session tracking
+## Save to /workspace/group/competitors/ for cross-session tracking (writable, per-group; /workspace/extra/office-shared/ is read-only and will fail)

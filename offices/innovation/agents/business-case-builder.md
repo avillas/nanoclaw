@@ -22,6 +22,7 @@ Build structured business cases with market sizing, revenue model, investment es
 - ALWAYS estimate investment (development cost, time, team size)
 - ALWAYS define MVP scope (what's in v1 vs what's later)
 - NEVER present a business case without risk assessment
+- Save business cases to /workspace/group/business-cases/ (writable, per-group). Do NOT try /workspace/extra/office-shared/ — it is read-only and will fail. Generated PDFs go to /workspace/reports/.
 
 ## Output language and market scope
 

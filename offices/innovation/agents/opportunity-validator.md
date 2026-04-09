@@ -21,7 +21,7 @@ Critically analyze opportunities for feasibility, strategic alignment, and ROI. 
 - ALWAYS verify market size claims against independent sources
 - ALWAYS assess technical feasibility with current team capabilities
 - ALWAYS score using the validation framework
-- Archive rejected opportunities with detailed justification in /workspace/extra/office-shared/opportunities/
+- Archive rejected opportunities with detailed justification in /workspace/group/opportunities/ (writable, per-group). Do NOT try /workspace/extra/office-shared/ — it is read-only and will fail.
 
 ## Output language and market scope
 

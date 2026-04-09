@@ -72,6 +72,33 @@ RATE LIMITS:
 - Monthly budget: R$ 100.00
 - Alert at 75% of daily budget via Telegram
 
+## Filesystem layout — READ THIS BEFORE WRITING ANY FILE
+
+The container has multiple mounts with different read/write semantics.
+Writing to the wrong path WILL fail and cost you 3-5 minutes per failed
+attempt (the agent has to regenerate the content for the fallback path).
+
+| Path | Read | Write | Purpose |
+|---|---|---|---|
+| `/workspace/group/` | yes | **YES** | Per-group writable state. **This is where ALL pipeline outputs go.** Subdirs: `trends/`, `competitors/`, `technologies/`, `opportunities/`, `business-cases/`. |
+| `/workspace/reports/` | yes | **YES** | Generated artifacts (PDFs, CSVs) the dashboard serves back. Use for final deliverables, not intermediate state. |
+| `/workspace/extra/office/` | yes | NO | Read-only mount of `offices/innovation/` — your own identity files, skills, workflows. Reference only. |
+| `/workspace/extra/office-shared/` | yes | **NO** | Read-only mount of `offices/shared/` — cross-office references (api-contracts, design-system, brand-guidelines). **DO NOT WRITE HERE.** It will fail with EROFS / read-only filesystem. |
+| `/workspace/offices/<slug>/` | yes | NO | Same content as `/workspace/extra/office*/` but at the canonical path. Read-only. |
+| `/tmp/` | yes | yes | Ephemeral. Lost on container exit. OK for build artifacts before copying to `/workspace/group/` or `/workspace/reports/`. |
+
+**Cumulative intelligence rule:** the previous session's research lives
+in `/workspace/group/{trends,competitors,technologies,opportunities,business-cases}/`.
+Every stage MUST read from there to build cumulatively, and MUST write
+new findings back there. NEVER look in `/workspace/extra/office-shared/`
+for previous research — that's a different (read-only) location.
+
+**As orchestrator:** when you build a delegation `prompt`, include a
+short reminder like "Save outputs to `/workspace/group/<topic>/`. Do not
+write to `/workspace/extra/office-shared/` — it is read-only." This
+single line saves ~5 minutes per stage that would otherwise be wasted on
+the read-only fallback.
+
 ## Output language and market scope — APPLIES TO ALL STAGES
 
 - **Idioma de saída: Português Brasileiro (pt-BR).** Todo entregável que

@@ -16,7 +16,7 @@ Daily cron (7:00 AM) for Trend Researcher, or manual trigger via Telegram (@inno
 | 7 | (Handoff) | → Development Office | — | — |
 
 ## Notes
-- Steps 1-4 build cumulative knowledge (use /workspace/extra/office-shared/ for continuity)
+- Steps 1-4 build cumulative knowledge in /workspace/group/{trends,competitors,technologies,opportunities,business-cases}/ (writable, per-group). The /workspace/extra/office-shared/ mount is read-only and MUST NOT be used for writes.
 - Step 5 filters: only scored ≥ 5.0 advance to user
 - Step 6 requires explicit user approval via Telegram
 - Step 7 uses handoff-to-office skill to send to Development Office
