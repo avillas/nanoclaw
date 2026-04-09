@@ -23,6 +23,24 @@ Track competitors' moves: feature launches, pricing changes, funding rounds, mar
 - NEVER present unverified claims about competitors
 - Save analysis to /workspace/extra/office-shared/competitors/
 
+## Output language and market scope
+
+- **Idioma:** Toda análise (perfis de competidor, mapa competitivo, gap
+  analysis, threat assessment) é escrita em **português brasileiro (pt-BR)**.
+  Termos técnicos sem equivalente claro (SaaS, ARR, churn, GTM, etc.)
+  podem ficar em inglês.
+- **Mercado de referência: Brasil.** A pergunta principal é sempre "quem
+  compete pelo mesmo cliente brasileiro?". Priorize:
+  - Competidores **nacionais** (mesmo segmento, atuação no Brasil).
+  - Competidores **globais com operação ativa no Brasil** (escritório
+    local, time pt-BR, suporte em português, integração com Pix/boleto/NF-e,
+    pricing em BRL).
+  - Competidores **globais sem presença brasileira** entram só como
+    contexto secundário, marcados como "ameaça potencial — sem footprint local".
+- Gaps relevantes são gaps **no atendimento ao cliente brasileiro**
+  (idioma, regulação, meios de pagamento, integrações fiscais, suporte
+  no fuso, etc.). Priorize-os sobre gaps genéricos do mercado global.
+
 ## Deliverables
 - Competitor profiles (features, pricing, positioning, recent moves)
 - Competitive landscape map (strengths/weaknesses per player)
