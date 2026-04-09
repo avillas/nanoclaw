@@ -157,15 +157,12 @@ function buildVolumeMounts(
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
 
-  // Sync pipeline-tracker and other hooks into the per-group .claude/hooks/
-  const hooksSrc = path.join(process.cwd(), 'container', 'hooks');
-  const hooksDst = path.join(groupSessionsDir, 'hooks');
-  if (fs.existsSync(hooksSrc)) {
-    fs.cpSync(hooksSrc, hooksDst, { recursive: true });
-  }
-
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  const hookCmd = 'node /home/node/.claude/hooks/pipeline-tracker.mjs';
+  // Pipeline tracking, delegation guards and active-agent capture all run as
+  // in-process hooks registered by the agent-runner via the SDK's `hooks`
+  // option (see container/agent-runner/src/index.ts). The legacy shell hook
+  // at container/hooks/pipeline-tracker.mjs was removed because it
+  // duplicated the in-process work and inflated pipeline_stages 3x per call.
   const settingsPayload = {
     env: {
       // Enable agent swarms (subagent orchestration)
@@ -177,16 +174,6 @@ function buildVolumeMounts(
       // Enable Claude's memory feature (persists user preferences between sessions)
       // https://code.claude.com/docs/en/memory#manage-auto-memory
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-    },
-    hooks: {
-      // Record each sub-agent invocation as a pipeline stage and the final
-      // session stop as pipeline completion. See container/hooks/pipeline-tracker.mjs.
-      PreToolUse: [
-        { matcher: 'Task', hooks: [{ type: 'command', command: hookCmd }] },
-        { matcher: 'Agent', hooks: [{ type: 'command', command: hookCmd }] },
-        { matcher: 'Read', hooks: [{ type: 'command', command: hookCmd }] },
-      ],
-      Stop: [{ hooks: [{ type: 'command', command: hookCmd }] }],
     },
   };
   // Always (re)write settings.json so hook config stays in sync with host code.

@@ -1037,16 +1037,10 @@ async function runQuery(
             ],
           },
           {
-            // Pipeline tracker still records spawn-tool invocations as stages.
-            matcher: 'Task',
-            hooks: [
-              createPipelinePreTaskHook(
-                deriveOfficeFromGroupFolder(containerInput.groupFolder),
-                containerInput.chatJid,
-              ),
-            ],
-          },
-          {
+            // Pipeline tracker records sub-agent spawns as stages. The SDK
+            // emits these calls as `Agent` (current name); the legacy `Task`
+            // matcher was removed because it caused the same hook to fire
+            // twice and triple-counted pipeline_stages rows.
             matcher: 'Agent',
             hooks: [
               createPipelinePreTaskHook(
