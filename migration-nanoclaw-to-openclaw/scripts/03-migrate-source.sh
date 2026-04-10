@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/config.env" 2>/dev/null || true
 source "${SCRIPT_DIR}/.last-export" 2>/dev/null || true
 
-OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/openclaw}"
+OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
 EXPORT_DIR="${EXPORT_DIR:-${SCRIPT_DIR}/../export-latest}"
 LOG_DIR="${SCRIPT_DIR}/../logs"
 LOG_FILE="${LOG_DIR}/03-migrate-source-$(date +%Y%m%d_%H%M%S).log"

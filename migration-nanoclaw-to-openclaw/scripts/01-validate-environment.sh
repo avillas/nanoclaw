@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/config.env" 2>/dev/null || true
 
 # Valores padrao (sobrescreva em config.env)
-OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/openclaw}"
+OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
 NANOCLAW_DIR="${NANOCLAW_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 BACKUP_DIR="${BACKUP_DIR:-${OPENCLAW_DIR}/backups/pre-migration-$(date +%Y%m%d_%H%M%S)}"
 LOG_DIR="${SCRIPT_DIR}/../logs"
