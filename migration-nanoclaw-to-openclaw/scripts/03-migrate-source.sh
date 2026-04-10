@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Fase 3: Migracao de Codigo-Fonte Customizado
+# Fase 3: Migracao de Codigo Customizado e Estrutura para OpenClaw
 # Projeto: Migracao NanoClaw -> OpenClaw
+# ============================================================================
+#
+# OpenClaw usa um state dir (~/.openclaw) com:
+#   workspace/    - IDENTITY.md, SOUL.md, USER.md, MEMORY.md, skills/
+#   agents/       - agentes com sessions/
+#   skills/       - skills compartilhadas
+#   openclaw.json - config principal
+#
+# NanoClaw usa:
+#   groups/       - por grupo (CLAUDE.md cada) -> mapeado para workspace/ + agents/
+#   offices/      - sistema multi-office -> copiado como-esta para uso externo
+#   .claude/skills/ -> mapeado para skills/
+#   container/skills/ -> mapeado para workspace/skills/
+#
+# Este script mapeia conceitos do NanoClaw para a estrutura do OpenClaw.
 # ============================================================================
 set -euo pipefail
 
@@ -13,7 +28,6 @@ OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
 EXPORT_DIR="${EXPORT_DIR:-${SCRIPT_DIR}/../export-latest}"
 LOG_DIR="${SCRIPT_DIR}/../logs"
 LOG_FILE="${LOG_DIR}/03-migrate-source-$(date +%Y%m%d_%H%M%S).log"
-MIGRATION_BRANCH="migration/nanoclaw-customs-$(date +%Y%m%d)"
 
 mkdir -p "${LOG_DIR}"
 
@@ -22,198 +36,123 @@ log()  { echo -e "${BLUE}[INFO]${NC} $*" | tee -a "${LOG_FILE}"; }
 ok()   { echo -e "${GREEN}[OK]${NC} $*" | tee -a "${LOG_FILE}"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*" | tee -a "${LOG_FILE}"; }
 fail() { echo -e "${RED}[FAIL]${NC} $*" | tee -a "${LOG_FILE}"; }
-die()  { fail "$*"; exit 1; }
 
 echo ""
 echo "============================================================"
-echo "  Fase 3: Migracao de Codigo-Fonte"
+echo "  Fase 3: Migracao de Estrutura e Customizacoes"
 echo "============================================================"
 echo ""
 log "Inicio: $(date)"
-log "OpenClaw: ${OPENCLAW_DIR}"
+log "OpenClaw state dir: ${OPENCLAW_DIR}"
 log "Exportacao: ${EXPORT_DIR}"
 
-# --- 3.1 Preparar branch de migracao ----------------------------------------
-log "=== Criando branch de migracao ==="
-cd "${OPENCLAW_DIR}"
+# --- 3.1 Migrar workspace (IDENTITY, SOUL, USER, MEMORY) --------------------
+log "=== Migrando workspace ==="
 
-if ! git rev-parse --git-dir > /dev/null 2>&1; then
-  die "OpenClaw nao e um repositorio git"
+mkdir -p "${OPENCLAW_DIR}/workspace/memory"
+mkdir -p "${OPENCLAW_DIR}/workspace/skills"
+
+# Mesclar conteudo de groups/global/CLAUDE.md para SOUL.md e MEMORY.md
+GLOBAL_MD="${EXPORT_DIR}/groups/global/CLAUDE.md"
+MAIN_MD="${EXPORT_DIR}/groups/main/CLAUDE.md"
+
+if [[ -f "${GLOBAL_MD}" ]]; then
+  # Append conteudo global ao SOUL.md
+  if [[ -f "${OPENCLAW_DIR}/workspace/SOUL.md" ]]; then
+    echo "" >> "${OPENCLAW_DIR}/workspace/SOUL.md"
+    echo "<!-- Migrado de NanoClaw groups/global/CLAUDE.md ($(date +%Y-%m-%d)) -->" >> "${OPENCLAW_DIR}/workspace/SOUL.md"
+    echo "" >> "${OPENCLAW_DIR}/workspace/SOUL.md"
+    cat "${GLOBAL_MD}" >> "${OPENCLAW_DIR}/workspace/SOUL.md"
+  else
+    cp "${GLOBAL_MD}" "${OPENCLAW_DIR}/workspace/SOUL.md"
+  fi
+  ok "Global CLAUDE.md -> SOUL.md"
 fi
 
-# Salvar estado atual
-CURRENT_BRANCH=$(git branch --show-current)
-git stash push -m "pre-migration-$(date +%Y%m%d)" 2>/dev/null || true
+if [[ -f "${MAIN_MD}" ]]; then
+  # Append instrucoes admin ao MEMORY.md
+  if [[ -f "${OPENCLAW_DIR}/workspace/MEMORY.md" ]]; then
+    echo "" >> "${OPENCLAW_DIR}/workspace/MEMORY.md"
+    echo "<!-- Migrado de NanoClaw groups/main/CLAUDE.md ($(date +%Y-%m-%d)) -->" >> "${OPENCLAW_DIR}/workspace/MEMORY.md"
+    echo "" >> "${OPENCLAW_DIR}/workspace/MEMORY.md"
+    cat "${MAIN_MD}" >> "${OPENCLAW_DIR}/workspace/MEMORY.md"
+  else
+    cp "${MAIN_MD}" "${OPENCLAW_DIR}/workspace/MEMORY.md"
+  fi
+  ok "Main CLAUDE.md -> MEMORY.md"
+fi
 
-# Criar branch
-git checkout -b "${MIGRATION_BRANCH}" 2>/dev/null || git checkout "${MIGRATION_BRANCH}"
-ok "Branch criada: ${MIGRATION_BRANCH}"
-
-# --- 3.2 Copiar offices/ ----------------------------------------------------
-log "=== Migrando offices/ ==="
+# --- 3.2 Migrar offices/ ----------------------------------------------------
+log "=== Migrando offices ==="
 
 if [[ -d "${EXPORT_DIR}/offices" ]]; then
-  # Copiar offices (exceto dashboard por enquanto, vai na fase 7)
+  # Offices sao uma customizacao NanoClaw; copiar para workspace/offices/
+  mkdir -p "${OPENCLAW_DIR}/workspace/offices"
   for office in marketing development innovation shared _template; do
     if [[ -d "${EXPORT_DIR}/offices/${office}" ]]; then
-      mkdir -p "${OPENCLAW_DIR}/offices/${office}"
-      cp -r "${EXPORT_DIR}/offices/${office}/" "${OPENCLAW_DIR}/offices/${office}/"
+      cp -r "${EXPORT_DIR}/offices/${office}" "${OPENCLAW_DIR}/workspace/offices/"
       ok "Office copiado: ${office}"
     fi
   done
 
-  # Copiar docs
   if [[ -d "${EXPORT_DIR}/offices/docs" ]]; then
-    mkdir -p "${OPENCLAW_DIR}/offices/docs"
-    cp -r "${EXPORT_DIR}/offices/docs/" "${OPENCLAW_DIR}/offices/docs/"
-    ok "Documentacao de offices copiada"
+    cp -r "${EXPORT_DIR}/offices/docs" "${OPENCLAW_DIR}/workspace/offices/"
+    ok "Docs de offices copiados"
   fi
 else
   warn "Offices nao encontrados no pacote de exportacao"
 fi
 
-# --- 3.3 Copiar container skills --------------------------------------------
-log "=== Migrando container skills ==="
+# --- 3.3 Migrar skills (container e claude) ----------------------------------
+log "=== Migrando skills ==="
 
+# Container skills -> workspace/skills/
 if [[ -d "${EXPORT_DIR}/container-skills" ]]; then
-  mkdir -p "${OPENCLAW_DIR}/container/skills"
-  cp -r "${EXPORT_DIR}/container-skills/" "${OPENCLAW_DIR}/container/skills/"
-  ok "Container skills copiados"
+  for skill_dir in "${EXPORT_DIR}"/container-skills/*/; do
+    [[ -d "${skill_dir}" ]] || continue
+    skill_name=$(basename "${skill_dir}")
+    cp -r "${skill_dir}" "${OPENCLAW_DIR}/workspace/skills/${skill_name}"
+    log "  Container skill: ${skill_name}"
+  done
+  ok "Container skills migrados para workspace/skills/"
 fi
 
-# --- 3.4 Copiar Claude skills -----------------------------------------------
-log "=== Migrando Claude skills ==="
-
+# Claude skills -> skills/ (shared)
 if [[ -d "${EXPORT_DIR}/claude-skills" ]]; then
-  mkdir -p "${OPENCLAW_DIR}/.claude/skills"
-  cp -r "${EXPORT_DIR}/claude-skills/" "${OPENCLAW_DIR}/.claude/skills/"
-  SKILL_COUNT=$(ls -d "${OPENCLAW_DIR}"/.claude/skills/*/ 2>/dev/null | wc -l || echo "0")
-  ok "Claude skills copiados: ${SKILL_COUNT}"
+  mkdir -p "${OPENCLAW_DIR}/skills"
+  for skill_dir in "${EXPORT_DIR}"/claude-skills/*/; do
+    [[ -d "${skill_dir}" ]] || continue
+    skill_name=$(basename "${skill_dir}")
+    cp -r "${skill_dir}" "${OPENCLAW_DIR}/skills/${skill_name}"
+    log "  Claude skill: ${skill_name}"
+  done
+  SKILL_COUNT=$(ls -d "${OPENCLAW_DIR}"/skills/*/ 2>/dev/null | wc -l || echo "0")
+  ok "Claude skills migrados: ${SKILL_COUNT}"
 fi
 
-# --- 3.5 Aplicar patches de codigo ------------------------------------------
-log "=== Aplicando customizacoes de codigo ==="
-
-PATCH_FILE="${EXPORT_DIR}/source-patches/all-changes.patch"
-if [[ ! -f "${PATCH_FILE}" ]]; then
-  PATCH_FILE="${EXPORT_DIR}/source-patches/recent-changes.patch"
-fi
-
-CONFLICTS=0
-if [[ -f "${PATCH_FILE}" ]] && [[ -s "${PATCH_FILE}" ]]; then
-  # Tentar aplicar patch com 3-way merge
-  if git apply --3way --stat "${PATCH_FILE}" >> "${LOG_FILE}" 2>&1; then
-    ok "Patches aplicados com sucesso"
-  elif git apply --3way --reject "${PATCH_FILE}" >> "${LOG_FILE}" 2>&1; then
-    warn "Patches aplicados com rejects - verificar arquivos .rej"
-    CONFLICTS=$(find "${OPENCLAW_DIR}" -name "*.rej" 2>/dev/null | wc -l)
-    warn "Conflitos: ${CONFLICTS} arquivo(s) .rej"
-  else
-    warn "Patches nao aplicaveis via git apply; copiando src/ completo"
-    # Fallback: copiar src/ inteiro
-    if [[ -d "${EXPORT_DIR}/source-patches/src-full" ]]; then
-      cp -r "${EXPORT_DIR}/source-patches/src-full/" "${OPENCLAW_DIR}/src/"
-      ok "Codigo-fonte copiado integralmente (fallback)"
-    fi
-  fi
-else
-  # Sem patch: copiar src/ inteiro
-  if [[ -d "${EXPORT_DIR}/source-patches/src-full" ]]; then
-    log "Nenhum patch disponivel; copiando src/ completo"
-    cp -r "${EXPORT_DIR}/source-patches/src-full/" "${OPENCLAW_DIR}/src/"
-    ok "Codigo-fonte copiado integralmente"
-  fi
-fi
-
-# --- 3.6 Atualizar dependencias ----------------------------------------------
-log "=== Atualizando dependencias ==="
-
-if [[ -f "${EXPORT_DIR}/config/package.json" ]]; then
-  # Extrair dependencias adicionais do NanoClaw
-  node -e "
-    const nano = require('${EXPORT_DIR}/config/package.json');
-    const oc = require('${OPENCLAW_DIR}/package.json');
-    const newDeps = {};
-    const nanoDeps = { ...nano.dependencies };
-    const ocDeps = { ...oc.dependencies };
-
-    for (const [k, v] of Object.entries(nanoDeps)) {
-      if (!ocDeps[k]) {
-        newDeps[k] = v;
-      }
-    }
-
-    if (Object.keys(newDeps).length > 0) {
-      console.log('Dependencias adicionais necessarias:');
-      for (const [k, v] of Object.entries(newDeps)) {
-        console.log('  ' + k + ': ' + v);
-      }
-
-      // Merge
-      oc.dependencies = { ...ocDeps, ...newDeps };
-      require('fs').writeFileSync('${OPENCLAW_DIR}/package.json', JSON.stringify(oc, null, 2) + '\n');
-      console.log('package.json atualizado');
-    } else {
-      console.log('Sem dependencias adicionais');
-    }
-  " >> "${LOG_FILE}" 2>&1 || warn "Falha ao mesclar dependencias"
-
-  # Instalar
-  cd "${OPENCLAW_DIR}"
-  npm install >> "${LOG_FILE}" 2>&1
-  ok "Dependencias instaladas"
-fi
-
-# --- 3.7 Copiar container config --------------------------------------------
-log "=== Atualizando configuracao de container ==="
+# --- 3.4 Migrar container config --------------------------------------------
+log "=== Copiando configuracao de container ==="
 
 if [[ -d "${EXPORT_DIR}/container-config" ]]; then
-  cp "${EXPORT_DIR}/container-config/Dockerfile" "${OPENCLAW_DIR}/container/Dockerfile" 2>/dev/null || true
-  cp "${EXPORT_DIR}/container-config/build.sh" "${OPENCLAW_DIR}/container/build.sh" 2>/dev/null || true
-  if [[ -d "${EXPORT_DIR}/container-config/agent-runner" ]]; then
-    cp -r "${EXPORT_DIR}/container-config/agent-runner/" "${OPENCLAW_DIR}/container/agent-runner/"
-  fi
-  ok "Configuracao de container atualizada"
+  # Container Dockerfile e build.sh sao uteis para reconstruir
+  mkdir -p "${OPENCLAW_DIR}/workspace/container"
+  cp -r "${EXPORT_DIR}/container-config/"* "${OPENCLAW_DIR}/workspace/container/" 2>/dev/null || true
+  ok "Config de container copiada para workspace/container/"
 fi
 
-# --- 3.8 Compilar TypeScript ------------------------------------------------
-log "=== Compilando TypeScript ==="
+# --- 3.5 Migrar source patches (referencia) ----------------------------------
+log "=== Salvando patches de referencia ==="
 
-cd "${OPENCLAW_DIR}"
-if npm run build >> "${LOG_FILE}" 2>&1; then
-  ok "Build concluido com sucesso"
-else
-  warn "Build falhou - verifique o log: ${LOG_FILE}"
-  warn "Pode ser necessario resolver conflitos manualmente"
+if [[ -d "${EXPORT_DIR}/source-patches" ]]; then
+  mkdir -p "${OPENCLAW_DIR}/workspace/.migration-ref"
+  cp -r "${EXPORT_DIR}/source-patches/"* "${OPENCLAW_DIR}/workspace/.migration-ref/" 2>/dev/null || true
+  ok "Patches de referencia salvos em workspace/.migration-ref/"
+  warn "Os patches sao apenas referencia - o codigo fonte do NanoClaw e OpenClaw diferem significativamente"
 fi
-
-# --- 3.9 Commit -------------------------------------------------------------
-log "=== Commitando alteracoes ==="
-
-cd "${OPENCLAW_DIR}"
-git add -A >> "${LOG_FILE}" 2>&1
-git commit -m "feat: migrar customizacoes do NanoClaw
-
-Inclui:
-- Sistema multi-office (marketing, development, innovation)
-- Container skills customizados
-- Claude skills (33+)
-- Customizacoes de codigo (pt-BR, retry 529, cost tracking)
-- Configuracao de container
-
-Migration-Source: NanoClaw v$(node -e "console.log(require('${EXPORT_DIR}/config/package.json').version)" 2>/dev/null || echo 'unknown')
-Migration-Date: $(date -Iseconds)" >> "${LOG_FILE}" 2>&1 || warn "Nada para commitar"
-
-ok "Alteracoes commitadas"
 
 echo ""
 echo "============================================================"
-if [[ ${CONFLICTS} -eq 0 ]]; then
-  echo -e "${GREEN}  MIGRACAO DE CODIGO CONCLUIDA${NC}"
-else
-  echo -e "${YELLOW}  MIGRACAO DE CODIGO CONCLUIDA COM ${CONFLICTS} CONFLITO(S)${NC}"
-  echo "  Verifique arquivos .rej em ${OPENCLAW_DIR}"
-fi
-echo "  Branch: ${MIGRATION_BRANCH}"
+echo -e "${GREEN}  MIGRACAO DE ESTRUTURA CONCLUIDA${NC}"
+echo "  State dir: ${OPENCLAW_DIR}"
 echo "============================================================"
 log "Fim: $(date)"

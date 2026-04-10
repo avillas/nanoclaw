@@ -9,20 +9,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/config.env" 2>/dev/null || true
 
-# Valores padrao (sobrescreva em config.env)
 OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
 NANOCLAW_DIR="${NANOCLAW_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
-BACKUP_DIR="${BACKUP_DIR:-${OPENCLAW_DIR}/backups/pre-migration-$(date +%Y%m%d_%H%M%S)}"
+BACKUP_DIR="${BACKUP_DIR:-${OPENCLAW_DIR}/.backups/pre-migration-$(date +%Y%m%d_%H%M%S)}"
 LOG_DIR="${SCRIPT_DIR}/../logs"
 LOG_FILE="${LOG_DIR}/01-validate-$(date +%Y%m%d_%H%M%S).log"
 MIN_DISK_GB="${MIN_DISK_GB:-5}"
-REMOTE_HOST="${REMOTE_HOST:-}"  # Deixe vazio para migracao local
+REMOTE_HOST="${REMOTE_HOST:-}"
 
 mkdir -p "${LOG_DIR}"
 
-# --- Funcoes utilitarias ----------------------------------------------------
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-
 log()  { echo -e "${BLUE}[INFO]${NC} $*" | tee -a "${LOG_FILE}"; }
 ok()   { echo -e "${GREEN}[OK]${NC} $*" | tee -a "${LOG_FILE}"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*" | tee -a "${LOG_FILE}"; }
@@ -37,27 +34,15 @@ run_on_target() {
   fi
 }
 
-check() {
-  local desc="$1"; shift
-  if "$@" >> "${LOG_FILE}" 2>&1; then
-    ok "${desc}"
-    return 0
-  else
-    fail "${desc}"
-    return 1
-  fi
-}
-
-# --- Cabecalho --------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo "  Fase 1: Validacao do Ambiente de Destino"
+echo "  Fase 1: Validacao do Ambiente"
 echo "  Migracao NanoClaw -> OpenClaw"
 echo "============================================================"
 echo ""
 log "Inicio: $(date)"
 log "NanoClaw: ${NANOCLAW_DIR}"
-log "OpenClaw: ${OPENCLAW_DIR}"
+log "OpenClaw state dir: ${OPENCLAW_DIR}"
 log "Destino: ${REMOTE_HOST:-local}"
 log "Log: ${LOG_FILE}"
 echo ""
@@ -88,18 +73,18 @@ else
   warn "Diretorio groups/ nao encontrado"
 fi
 
-DB_PATH="${NANOCLAW_DIR}/store/nanoclaw.db"
-if [[ -f "${DB_PATH}" ]]; then
+DB_PATH=""
+for candidate in "${NANOCLAW_DIR}/store/nanoclaw.db" "${NANOCLAW_DIR}/store/data.db"; do
+  if [[ -f "${candidate}" ]]; then
+    DB_PATH="${candidate}"
+    break
+  fi
+done
+if [[ -n "${DB_PATH}" ]]; then
   DB_SIZE=$(du -h "${DB_PATH}" | cut -f1)
   ok "Banco de dados encontrado (${DB_SIZE})"
 else
-  DB_PATH="${NANOCLAW_DIR}/store/data.db"
-  if [[ -f "${DB_PATH}" ]]; then
-    DB_SIZE=$(du -h "${DB_PATH}" | cut -f1)
-    ok "Banco de dados encontrado (${DB_SIZE})"
-  else
-    warn "Banco de dados SQLite nao encontrado em store/"
-  fi
+  warn "Banco de dados SQLite nao encontrado em store/"
 fi
 
 echo ""
@@ -108,11 +93,10 @@ echo ""
 log "=== Verificando destino ==="
 
 if [[ -n "${REMOTE_HOST}" ]]; then
-  if check "Conexao SSH com ${REMOTE_HOST}" ssh -o ConnectTimeout=10 "${REMOTE_HOST}" "echo ok"; then
-    :
+  if ssh -o ConnectTimeout=10 "${REMOTE_HOST}" "echo ok" >> "${LOG_FILE}" 2>&1; then
+    ok "Conexao SSH com ${REMOTE_HOST}"
   else
     die "Nao foi possivel conectar via SSH em ${REMOTE_HOST}"
-    ((ERRORS++))
   fi
 else
   ok "Migracao local (mesmo host)"
@@ -121,19 +105,42 @@ fi
 # --- 1.3 Verificar OpenClaw no destino ---------------------------------------
 log "=== Verificando OpenClaw ==="
 
-if run_on_target "[[ -f '${OPENCLAW_DIR}/package.json' ]]" 2>/dev/null; then
-  OC_VERSION=$(run_on_target "node -e \"console.log(require('${OPENCLAW_DIR}/package.json').version)\"" 2>/dev/null || echo "desconhecida")
-  ok "OpenClaw encontrado (v${OC_VERSION})"
+# OpenClaw e um CLI global, nao um projeto Node. Verificar o binario e o state dir.
+if run_on_target "command -v openclaw" &>/dev/null 2>&1; then
+  OC_VERSION=$(run_on_target "openclaw --version 2>/dev/null" || echo "desconhecida")
+  ok "OpenClaw CLI encontrado (${OC_VERSION})"
 else
-  fail "OpenClaw nao encontrado em ${OPENCLAW_DIR}"
+  fail "Comando 'openclaw' nao encontrado no PATH"
+  warn "Instale com: npm install -g openclaw  (ou execute a Fase 0)"
   ((ERRORS++))
 fi
 
-# Verificar se esta rodando
-if run_on_target "systemctl --user is-active openclaw 2>/dev/null || pgrep -f 'openclaw.*index' >/dev/null 2>&1" 2>/dev/null; then
-  ok "OpenClaw esta rodando"
+# Verificar state dir (config principal)
+if run_on_target "[[ -f '${OPENCLAW_DIR}/openclaw.json' ]]" 2>/dev/null; then
+  ok "Config encontrada: ${OPENCLAW_DIR}/openclaw.json"
+elif run_on_target "[[ -f '${OPENCLAW_DIR}/clawdbot.json' ]]" 2>/dev/null; then
+  ok "Config encontrada: ${OPENCLAW_DIR}/clawdbot.json (formato legado)"
 else
-  warn "OpenClaw nao parece estar rodando (pode nao ser problema se ainda nao foi iniciado)"
+  fail "Nenhum openclaw.json ou clawdbot.json em ${OPENCLAW_DIR}"
+  warn "O OpenClaw precisa ser inicializado. Execute: openclaw"
+  ((ERRORS++))
+fi
+
+# Verificar workspace
+if run_on_target "[[ -d '${OPENCLAW_DIR}/workspace' ]]" 2>/dev/null; then
+  WORKSPACE_FILES=$(run_on_target "ls '${OPENCLAW_DIR}/workspace/'*.md 2>/dev/null | wc -l" || echo "0")
+  ok "Workspace encontrado (${WORKSPACE_FILES} arquivos .md)"
+else
+  warn "Diretorio workspace/ nao encontrado em ${OPENCLAW_DIR}"
+fi
+
+# Verificar se esta rodando
+if run_on_target "systemctl --user is-active openclaw 2>/dev/null" 2>/dev/null | grep -q "active"; then
+  ok "OpenClaw esta rodando (systemd)"
+elif run_on_target "pgrep -f 'openclaw' >/dev/null 2>&1" 2>/dev/null; then
+  ok "OpenClaw esta rodando (processo)"
+else
+  warn "OpenClaw nao parece estar rodando"
 fi
 
 echo ""
@@ -141,43 +148,34 @@ echo ""
 # --- 1.4 Pre-requisitos no destino -------------------------------------------
 log "=== Verificando pre-requisitos ==="
 
-# Node.js
 NODE_VERSION=$(run_on_target "node --version 2>/dev/null" || echo "nao instalado")
-if [[ "${NODE_VERSION}" =~ ^v(2[0-9]|[3-9][0-9]) ]]; then
+if [[ "${NODE_VERSION}" =~ ^v(2[2-9]|[3-9][0-9]) ]]; then
   ok "Node.js: ${NODE_VERSION}"
 else
-  fail "Node.js >= 20 necessario (encontrado: ${NODE_VERSION})"
+  fail "Node.js >= 22.14 necessario (encontrado: ${NODE_VERSION})"
   ((ERRORS++))
 fi
 
-# npm
 NPM_VERSION=$(run_on_target "npm --version 2>/dev/null" || echo "nao instalado")
 ok "npm: v${NPM_VERSION}"
 
-# Container runtime
 if run_on_target "docker --version >/dev/null 2>&1"; then
-  DOCKER_VERSION=$(run_on_target "docker --version 2>/dev/null" | head -1)
-  ok "Docker: ${DOCKER_VERSION}"
+  ok "Docker: $(run_on_target 'docker --version 2>/dev/null' | head -1)"
 elif run_on_target "podman --version >/dev/null 2>&1"; then
-  PODMAN_VERSION=$(run_on_target "podman --version 2>/dev/null" | head -1)
-  ok "Podman: ${PODMAN_VERSION}"
+  ok "Podman: $(run_on_target 'podman --version 2>/dev/null' | head -1)"
 else
   fail "Docker ou Podman nao encontrado"
   ((ERRORS++))
 fi
 
-# SQLite
 if run_on_target "sqlite3 --version >/dev/null 2>&1"; then
-  SQLITE_VERSION=$(run_on_target "sqlite3 --version 2>/dev/null" | head -1)
-  ok "SQLite: ${SQLITE_VERSION}"
+  ok "SQLite: $(run_on_target 'sqlite3 --version 2>/dev/null' | head -1)"
 else
   warn "sqlite3 CLI nao encontrado (pode usar better-sqlite3 do Node)"
 fi
 
-# Git
 if run_on_target "git --version >/dev/null 2>&1"; then
-  GIT_VERSION=$(run_on_target "git --version 2>/dev/null")
-  ok "Git: ${GIT_VERSION}"
+  ok "Git: $(run_on_target 'git --version 2>/dev/null')"
 else
   fail "Git nao encontrado"
   ((ERRORS++))
@@ -188,7 +186,7 @@ echo ""
 # --- 1.5 Espaco em disco ----------------------------------------------------
 log "=== Verificando espaco em disco ==="
 
-AVAIL_KB=$(run_on_target "df -k '${OPENCLAW_DIR}' 2>/dev/null | tail -1 | awk '{print \$4}'" || echo "0")
+AVAIL_KB=$(run_on_target "df -k '$HOME' 2>/dev/null | tail -1 | awk '{print \$4}'" || echo "0")
 AVAIL_GB=$((AVAIL_KB / 1024 / 1024))
 if [[ ${AVAIL_GB} -ge ${MIN_DISK_GB} ]]; then
   ok "Espaco disponivel: ${AVAIL_GB}GB (minimo: ${MIN_DISK_GB}GB)"
@@ -204,31 +202,26 @@ log "=== Criando backup do OpenClaw ==="
 
 run_on_target "mkdir -p '${BACKUP_DIR}'"
 
-# Backup do banco de dados
-OC_DB=$(run_on_target "find '${OPENCLAW_DIR}' -name '*.db' -path '*/store/*' 2>/dev/null | head -1" || echo "")
-if [[ -n "${OC_DB}" ]]; then
-  run_on_target "cp '${OC_DB}' '${BACKUP_DIR}/database-backup.db'"
-  ok "Banco de dados salvo em ${BACKUP_DIR}/database-backup.db"
-fi
+# Backup do config
+run_on_target "cp '${OPENCLAW_DIR}/openclaw.json' '${BACKUP_DIR}/' 2>/dev/null || cp '${OPENCLAW_DIR}/clawdbot.json' '${BACKUP_DIR}/' 2>/dev/null" || true
 
-# Backup de configuracoes
-run_on_target "cp '${OPENCLAW_DIR}/package.json' '${BACKUP_DIR}/' 2>/dev/null" || true
-run_on_target "cp '${OPENCLAW_DIR}/.env' '${BACKUP_DIR}/' 2>/dev/null" || true
-run_on_target "cp -r '${OPENCLAW_DIR}/groups' '${BACKUP_DIR}/groups-backup' 2>/dev/null" || true
+# Backup do workspace
+run_on_target "cp -r '${OPENCLAW_DIR}/workspace' '${BACKUP_DIR}/workspace-backup' 2>/dev/null" || true
 
-# Snapshot do git
-run_on_target "cd '${OPENCLAW_DIR}' && git stash 2>/dev/null && git log --oneline -5 > '${BACKUP_DIR}/git-state.txt' && git rev-parse HEAD > '${BACKUP_DIR}/git-sha.txt'" 2>/dev/null || true
+# Backup do auth
+run_on_target "cp '${OPENCLAW_DIR}/auth-profiles.json' '${BACKUP_DIR}/' 2>/dev/null" || true
+
+# Backup do cron
+run_on_target "cp -r '${OPENCLAW_DIR}/cron' '${BACKUP_DIR}/cron-backup' 2>/dev/null" || true
+
+# Backup dos agents/sessions
+run_on_target "cp -r '${OPENCLAW_DIR}/agents' '${BACKUP_DIR}/agents-backup' 2>/dev/null" || true
+
+# Snapshot do estado
+run_on_target "ls -la '${OPENCLAW_DIR}/' > '${BACKUP_DIR}/state-snapshot.txt' 2>/dev/null" || true
+run_on_target "date > '${BACKUP_DIR}/backup-timestamp.txt'" || true
 
 ok "Backup criado em ${BACKUP_DIR}"
-
-echo ""
-
-# --- 1.7 Criar diretorio de trabalho ----------------------------------------
-log "=== Preparando diretorio de migracao ==="
-
-MIGRATION_WORK_DIR="${OPENCLAW_DIR}/migration-work"
-run_on_target "mkdir -p '${MIGRATION_WORK_DIR}'"
-ok "Diretorio de trabalho: ${MIGRATION_WORK_DIR}"
 
 echo ""
 

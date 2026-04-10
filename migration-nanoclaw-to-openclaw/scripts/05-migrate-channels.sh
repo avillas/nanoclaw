@@ -3,6 +3,15 @@
 # Fase 5: Migracao de Canais e Credenciais
 # Projeto: Migracao NanoClaw -> OpenClaw
 # ============================================================================
+#
+# OpenClaw configura canais em openclaw.json:
+#   { "channels": { "telegram": { "botToken": "..." }, ... } }
+#
+# Credenciais podem ser:
+#   - String literal: "sk-xxx"
+#   - Referencia env: "${TELEGRAM_BOT_TOKEN}"
+#   - SecretRef: { "source": "env", "id": "TELEGRAM_BOT_TOKEN" }
+# ============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,235 +42,198 @@ log "Inicio: $(date)"
 
 CHANNELS_STATUS=()
 
-# --- 5.1 Preparar .env do OpenClaw ------------------------------------------
-log "=== Preparando arquivo .env ==="
-
-OC_ENV="${OPENCLAW_DIR}/.env"
-if [[ ! -f "${OC_ENV}" ]]; then
-  touch "${OC_ENV}"
-fi
-
-# Ler variaveis existentes no NanoClaw
+# --- Localizar .env do NanoClaw ----------------------------------------------
 NANO_ENV="${NANOCLAW_DIR}/.env"
-if [[ -f "${NANO_ENV}" ]]; then
-  log "Variaveis do NanoClaw detectadas:"
-  grep -E '^[A-Z_]+=' "${NANO_ENV}" | cut -d= -f1 | while read -r key; do
-    log "  ${key}"
-  done
+if [[ -f "${EXPORT_DIR}/config/.env" ]]; then
+  NANO_ENV="${EXPORT_DIR}/config/.env"
 fi
 
-# Funcao para adicionar variavel ao .env sem duplicar
-add_env() {
-  local key="$1" value="$2"
-  if grep -q "^${key}=" "${OC_ENV}" 2>/dev/null; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "${OC_ENV}"
-  else
-    echo "${key}=${value}" >> "${OC_ENV}"
+# Funcao para ler variavel do .env NanoClaw
+get_nano_var() {
+  local key="$1"
+  local value=""
+  if [[ -f "${NANO_ENV}" ]]; then
+    value=$(grep "^${key}=" "${NANO_ENV}" 2>/dev/null | head -1 | cut -d= -f2- || echo "")
   fi
+  # Tentar OneCLI
+  if [[ -z "${value}" ]] && command -v onecli &>/dev/null; then
+    value=$(onecli get "${key}" 2>/dev/null || echo "")
+  fi
+  echo "${value}"
 }
 
-# --- 5.2 Migrar configuracoes gerais ----------------------------------------
+# --- Localizar config do OpenClaw --------------------------------------------
+OC_CONFIG="${OPENCLAW_DIR}/openclaw.json"
+if [[ ! -f "${OC_CONFIG}" ]]; then
+  OC_CONFIG="${OPENCLAW_DIR}/clawdbot.json"
+fi
+
+if [[ ! -f "${OC_CONFIG}" ]]; then
+  fail "Config do OpenClaw nao encontrada. Execute a Fase 0 primeiro."
+  exit 1
+fi
+
+log "Config OpenClaw: ${OC_CONFIG}"
+log "NanoClaw .env: ${NANO_ENV}"
+echo ""
+
+# --- 5.1 Migrar configuracoes gerais ----------------------------------------
 log "=== Migrando configuracoes gerais ==="
 
-if [[ -f "${NANO_ENV}" ]]; then
-  # Copiar configs nao-sensiveis
-  for key in ASSISTANT_NAME TZ CONTAINER_IMAGE CONTAINER_TIMEOUT MAX_CONCURRENT_CONTAINERS IDLE_TIMEOUT; do
-    value=$(grep "^${key}=" "${NANO_ENV}" 2>/dev/null | cut -d= -f2- || echo "")
-    if [[ -n "${value}" ]]; then
-      add_env "${key}" "${value}"
-      ok "Migrado: ${key}=${value}"
-    fi
-  done
+ASSISTANT_NAME=$(get_nano_var "ASSISTANT_NAME")
+TZ_VALUE=$(get_nano_var "TZ")
+
+if [[ -n "${ASSISTANT_NAME}" ]]; then
+  # Atualizar IDENTITY.md
+  if [[ -f "${OPENCLAW_DIR}/workspace/IDENTITY.md" ]]; then
+    sed -i "s/^name:.*$/name: ${ASSISTANT_NAME}/" "${OPENCLAW_DIR}/workspace/IDENTITY.md" 2>/dev/null || true
+    ok "Nome do assistente: ${ASSISTANT_NAME}"
+  fi
+fi
+
+if [[ -n "${TZ_VALUE}" ]]; then
+  # Atualizar timezone em openclaw.json
+  node -e "
+    const fs = require('fs');
+    const config = JSON.parse(fs.readFileSync('${OC_CONFIG}', 'utf-8'));
+    if (!config.agents) config.agents = {};
+    if (!config.agents.defaults) config.agents.defaults = {};
+    config.agents.defaults.userTimezone = '${TZ_VALUE}';
+    fs.writeFileSync('${OC_CONFIG}', JSON.stringify(config, null, 2));
+  " 2>/dev/null && ok "Timezone: ${TZ_VALUE}" || warn "Falha ao configurar timezone"
 fi
 
 echo ""
 
-# --- 5.3 Canal: Telegram ----------------------------------------------------
+# --- Funcao para adicionar canal ao openclaw.json ----------------------------
+add_channel_config() {
+  local channel="$1"
+  local json_fragment="$2"
+
+  node -e "
+    const fs = require('fs');
+    const config = JSON.parse(fs.readFileSync('${OC_CONFIG}', 'utf-8'));
+    if (!config.channels) config.channels = {};
+    config.channels['${channel}'] = ${json_fragment};
+    fs.writeFileSync('${OC_CONFIG}', JSON.stringify(config, null, 2));
+  " 2>/dev/null
+}
+
+# --- 5.2 Canal: Telegram ----------------------------------------------------
 log "=== Canal: Telegram ==="
 
-TELEGRAM_TOKEN=""
-if [[ -f "${NANO_ENV}" ]]; then
-  TELEGRAM_TOKEN=$(grep "^TELEGRAM_BOT_TOKEN=" "${NANO_ENV}" 2>/dev/null | cut -d= -f2- || echo "")
-fi
-
+TELEGRAM_TOKEN=$(get_nano_var "TELEGRAM_BOT_TOKEN")
 if [[ -n "${TELEGRAM_TOKEN}" ]]; then
-  add_env "TELEGRAM_BOT_TOKEN" "${TELEGRAM_TOKEN}"
-  ok "Token Telegram migrado"
-  CHANNELS_STATUS+=("Telegram: OK (token migrado)")
+  add_channel_config "telegram" "{\"botToken\": \"${TELEGRAM_TOKEN}\"}" && \
+    ok "Telegram configurado em openclaw.json" || warn "Falha ao configurar Telegram"
+  CHANNELS_STATUS+=("Telegram: OK")
 else
-  # Verificar OneCLI
-  if command -v onecli &>/dev/null; then
-    TELEGRAM_TOKEN=$(onecli get TELEGRAM_BOT_TOKEN 2>/dev/null || echo "")
-    if [[ -n "${TELEGRAM_TOKEN}" ]]; then
-      add_env "TELEGRAM_BOT_TOKEN" "${TELEGRAM_TOKEN}"
-      ok "Token Telegram obtido via OneCLI"
-      CHANNELS_STATUS+=("Telegram: OK (via OneCLI)")
-    fi
-  fi
-
-  if [[ -z "${TELEGRAM_TOKEN}" ]]; then
-    info "TELEGRAM_BOT_TOKEN nao encontrado. Configure manualmente:"
-    info "  1. Fale com @BotFather no Telegram"
-    info "  2. Use /token para obter o token do seu bot"
-    info "  3. Adicione ao .env: TELEGRAM_BOT_TOKEN=seu_token"
-    CHANNELS_STATUS+=("Telegram: PENDENTE (configurar token)")
-  fi
-fi
-
-# Verificar skill instalada
-if [[ -d "${OPENCLAW_DIR}/.claude/skills/add-telegram" ]] || [[ -f "${OPENCLAW_DIR}/src/channels/telegram.ts" ]]; then
-  ok "Skill Telegram presente"
-else
-  warn "Skill Telegram pode precisar ser instalada. Execute /add-telegram no OpenClaw"
-  CHANNELS_STATUS+=("Telegram: skill precisa ser instalada")
+  info "TELEGRAM_BOT_TOKEN nao encontrado."
+  info "  Configure manualmente em ${OC_CONFIG} -> channels.telegram.botToken"
+  CHANNELS_STATUS+=("Telegram: PENDENTE")
 fi
 
 echo ""
 
-# --- 5.4 Canal: WhatsApp ----------------------------------------------------
+# --- 5.3 Canal: WhatsApp ----------------------------------------------------
 log "=== Canal: WhatsApp ==="
 
-# WhatsApp usa auth state local (baileys) - nao e transferivel de forma confiavel
-if [[ -d "${NANOCLAW_DIR}/store/whatsapp-auth" ]] || [[ -d "${NANOCLAW_DIR}/auth_info_baileys" ]]; then
-  warn "Auth state do WhatsApp encontrado, mas sessoes baileys frequentemente expiram na transferencia"
-  info "Recomendacao: Reautenticar o WhatsApp no OpenClaw"
-  info "  1. Certifique-se que /add-whatsapp esta instalado no OpenClaw"
-  info "  2. Inicie o OpenClaw e escaneie o QR code novamente"
-  CHANNELS_STATUS+=("WhatsApp: REAUTENTICACAO NECESSARIA")
-else
-  info "WhatsApp: Nenhum auth state encontrado"
-  info "  Configure via /add-whatsapp no OpenClaw"
-  CHANNELS_STATUS+=("WhatsApp: CONFIGURAR DO ZERO")
-fi
+warn "WhatsApp requer reautenticacao (sessao baileys nao e transferivel)"
+info "  1. Certifique-se que o canal WhatsApp esta habilitado no OpenClaw"
+info "  2. Inicie o OpenClaw e escaneie o QR code"
+CHANNELS_STATUS+=("WhatsApp: REAUTENTICACAO NECESSARIA")
 
 echo ""
 
-# --- 5.5 Canal: Slack -------------------------------------------------------
+# --- 5.4 Canal: Slack -------------------------------------------------------
 log "=== Canal: Slack ==="
 
-SLACK_VARS=("SLACK_BOT_TOKEN" "SLACK_APP_TOKEN" "SLACK_SIGNING_SECRET")
-SLACK_OK=true
+SLACK_BOT=$(get_nano_var "SLACK_BOT_TOKEN")
+SLACK_APP=$(get_nano_var "SLACK_APP_TOKEN")
 
-for var in "${SLACK_VARS[@]}"; do
-  value=""
-  if [[ -f "${NANO_ENV}" ]]; then
-    value=$(grep "^${var}=" "${NANO_ENV}" 2>/dev/null | cut -d= -f2- || echo "")
-  fi
-  if [[ -z "${value}" ]] && command -v onecli &>/dev/null; then
-    value=$(onecli get "${var}" 2>/dev/null || echo "")
-  fi
-
-  if [[ -n "${value}" ]]; then
-    add_env "${var}" "${value}"
-    ok "Migrado: ${var}"
-  else
-    warn "${var} nao encontrado"
-    SLACK_OK=false
-  fi
-done
-
-if [[ "${SLACK_OK}" == "true" ]]; then
-  CHANNELS_STATUS+=("Slack: OK (credenciais migradas)")
+if [[ -n "${SLACK_BOT}" ]] && [[ -n "${SLACK_APP}" ]]; then
+  add_channel_config "slack" "{\"botToken\": \"${SLACK_BOT}\", \"appToken\": \"${SLACK_APP}\"}" && \
+    ok "Slack configurado" || warn "Falha ao configurar Slack"
+  CHANNELS_STATUS+=("Slack: OK")
+elif [[ -n "${SLACK_BOT}" ]]; then
+  add_channel_config "slack" "{\"botToken\": \"${SLACK_BOT}\"}" && \
+    ok "Slack parcialmente configurado (falta appToken)" || true
+  CHANNELS_STATUS+=("Slack: PARCIAL (falta appToken)")
 else
-  info "Slack: Algumas credenciais faltando. Configure em https://api.slack.com/apps"
-  CHANNELS_STATUS+=("Slack: PARCIAL (verificar credenciais)")
+  info "Credenciais Slack nao encontradas. Configure em https://api.slack.com/apps"
+  CHANNELS_STATUS+=("Slack: PENDENTE")
 fi
 
 echo ""
 
-# --- 5.6 Canal: Discord -----------------------------------------------------
+# --- 5.5 Canal: Discord -----------------------------------------------------
 log "=== Canal: Discord ==="
 
-DISCORD_TOKEN=""
-if [[ -f "${NANO_ENV}" ]]; then
-  DISCORD_TOKEN=$(grep "^DISCORD_BOT_TOKEN=" "${NANO_ENV}" 2>/dev/null | cut -d= -f2- || echo "")
-fi
-if [[ -z "${DISCORD_TOKEN}" ]] && command -v onecli &>/dev/null; then
-  DISCORD_TOKEN=$(onecli get DISCORD_BOT_TOKEN 2>/dev/null || echo "")
-fi
-
+DISCORD_TOKEN=$(get_nano_var "DISCORD_BOT_TOKEN")
 if [[ -n "${DISCORD_TOKEN}" ]]; then
-  add_env "DISCORD_BOT_TOKEN" "${DISCORD_TOKEN}"
-  ok "Token Discord migrado"
-  CHANNELS_STATUS+=("Discord: OK (token migrado)")
+  add_channel_config "discord" "{\"token\": \"${DISCORD_TOKEN}\"}" && \
+    ok "Discord configurado" || warn "Falha ao configurar Discord"
+  CHANNELS_STATUS+=("Discord: OK")
 else
   info "DISCORD_BOT_TOKEN nao encontrado. Configure em https://discord.com/developers/applications"
-  CHANNELS_STATUS+=("Discord: PENDENTE (configurar token)")
+  CHANNELS_STATUS+=("Discord: PENDENTE")
 fi
 
 echo ""
 
-# --- 5.7 Canal: Gmail -------------------------------------------------------
+# --- 5.6 Canal: Gmail -------------------------------------------------------
 log "=== Canal: Gmail ==="
 
-GMAIL_VARS=("GMAIL_CLIENT_ID" "GMAIL_CLIENT_SECRET" "GMAIL_REFRESH_TOKEN")
-GMAIL_OK=true
+GMAIL_ID=$(get_nano_var "GMAIL_CLIENT_ID")
+GMAIL_SECRET=$(get_nano_var "GMAIL_CLIENT_SECRET")
+GMAIL_REFRESH=$(get_nano_var "GMAIL_REFRESH_TOKEN")
 
-for var in "${GMAIL_VARS[@]}"; do
-  value=""
-  if [[ -f "${NANO_ENV}" ]]; then
-    value=$(grep "^${var}=" "${NANO_ENV}" 2>/dev/null | cut -d= -f2- || echo "")
-  fi
-  if [[ -z "${value}" ]] && command -v onecli &>/dev/null; then
-    value=$(onecli get "${var}" 2>/dev/null || echo "")
-  fi
-
-  if [[ -n "${value}" ]]; then
-    add_env "${var}" "${value}"
-    ok "Migrado: ${var}"
-  else
-    warn "${var} nao encontrado"
-    GMAIL_OK=false
-  fi
-done
-
-if [[ "${GMAIL_OK}" == "true" ]]; then
-  CHANNELS_STATUS+=("Gmail: OK (credenciais migradas)")
+if [[ -n "${GMAIL_ID}" ]] && [[ -n "${GMAIL_SECRET}" ]] && [[ -n "${GMAIL_REFRESH}" ]]; then
+  info "Gmail requer configuracao manual no OpenClaw (formato OAuth diferente)"
+  info "  Client ID: ${GMAIL_ID:0:10}..."
+  info "  Configure em ${OC_CONFIG}"
+  CHANNELS_STATUS+=("Gmail: CONFIGURACAO MANUAL")
 else
-  info "Gmail: Credenciais OAuth faltando. Reconfigure via Google Cloud Console"
-  CHANNELS_STATUS+=("Gmail: PARCIAL (reconfiguracao necessaria)")
+  info "Credenciais Gmail incompletas. Reconfigure via Google Cloud Console"
+  CHANNELS_STATUS+=("Gmail: PENDENTE")
 fi
 
 echo ""
 
-# --- 5.8 Migrar security configs --------------------------------------------
-log "=== Migrando configuracoes de seguranca ==="
+# --- 5.7 Migrar credenciais Anthropic ---------------------------------------
+log "=== Credenciais Anthropic ==="
 
-OC_CONFIG_DIR="${HOME}/.config/openclaw"
-mkdir -p "${OC_CONFIG_DIR}"
-
-for f in mount-allowlist.json sender-allowlist.json; do
-  NANO_FILE="${HOME}/.config/nanoclaw/${f}"
-  OC_FILE="${OC_CONFIG_DIR}/${f}"
-
-  if [[ -f "${EXPORT_DIR}/config/${f}" ]]; then
-    cp "${EXPORT_DIR}/config/${f}" "${OC_FILE}"
-    ok "Copiado: ${f}"
-  elif [[ -f "${NANO_FILE}" ]]; then
-    cp "${NANO_FILE}" "${OC_FILE}"
-    ok "Copiado de ~/.config/nanoclaw/: ${f}"
-  else
-    log "${f} nao encontrado"
-  fi
-done
+ANTHROPIC_KEY=$(get_nano_var "ANTHROPIC_API_KEY")
+if [[ -n "${ANTHROPIC_KEY}" ]]; then
+  # Configurar em auth-profiles.json
+  node -e "
+    const fs = require('fs');
+    const authFile = '${OPENCLAW_DIR}/auth-profiles.json';
+    let auth = { version: 1, profiles: {} };
+    if (fs.existsSync(authFile)) {
+      try { auth = JSON.parse(fs.readFileSync(authFile, 'utf-8')); } catch(e) {}
+    }
+    auth.profiles['anthropic:default'] = {
+      type: 'api_key',
+      provider: 'anthropic',
+      key: '${ANTHROPIC_KEY}'
+    };
+    fs.writeFileSync(authFile, JSON.stringify(auth, null, 2));
+  " 2>/dev/null && ok "Chave Anthropic configurada em auth-profiles.json" || warn "Falha ao configurar chave Anthropic"
+else
+  warn "ANTHROPIC_API_KEY nao encontrada"
+  info "  Configure em ${OPENCLAW_DIR}/auth-profiles.json"
+fi
 
 echo ""
 
-# --- 5.9 OneCLI ---------------------------------------------------------------
+# --- 5.8 OneCLI -------------------------------------------------------------
 log "=== Verificando OneCLI ==="
 
-if [[ -f "${NANO_ENV}" ]]; then
-  ONECLI_URL=$(grep "^ONECLI_URL=" "${NANO_ENV}" 2>/dev/null | cut -d= -f2- || echo "")
-  if [[ -n "${ONECLI_URL}" ]]; then
-    add_env "ONECLI_URL" "${ONECLI_URL}"
-    ok "OneCLI URL migrado: ${ONECLI_URL}"
-  fi
-fi
-
-if command -v onecli &>/dev/null; then
-  ok "OneCLI esta disponivel no destino"
-else
-  warn "OneCLI nao encontrado. Execute /init-onecli no OpenClaw se necessario"
+ONECLI_URL=$(get_nano_var "ONECLI_URL")
+if [[ -n "${ONECLI_URL}" ]]; then
+  log "OneCLI URL: ${ONECLI_URL}"
+  warn "OneCLI e especifico do NanoClaw. Verifique se o OpenClaw usa mecanismo similar."
 fi
 
 echo ""
@@ -275,12 +247,12 @@ echo "Status dos canais:"
 for status in "${CHANNELS_STATUS[@]}"; do
   if [[ "${status}" == *"OK"* ]]; then
     echo -e "  ${GREEN}✓${NC} ${status}"
-  elif [[ "${status}" == *"PARCIAL"* ]]; then
+  elif [[ "${status}" == *"PARCIAL"* ]] || [[ "${status}" == *"MANUAL"* ]]; then
     echo -e "  ${YELLOW}△${NC} ${status}"
   else
     echo -e "  ${RED}✗${NC} ${status}"
   fi
 done
 echo ""
-echo "Acoes pendentes foram registradas no log: ${LOG_FILE}"
+log "Config atualizada: ${OC_CONFIG}"
 log "Fim: $(date)"

@@ -3,6 +3,11 @@
 # Fase 7: Migracao do Dashboard Mission Control
 # Projeto: Migracao NanoClaw -> OpenClaw
 # ============================================================================
+#
+# O Dashboard e uma aplicacao Next.js independente.
+# Instalado FORA do state dir do OpenClaw (ex: ~/openclaw-dashboard).
+# Le dados do filesystem (offices/) e do banco SQLite do NanoClaw (migrado).
+# ============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -10,7 +15,9 @@ source "${SCRIPT_DIR}/config.env" 2>/dev/null || true
 source "${SCRIPT_DIR}/.last-export" 2>/dev/null || true
 
 OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
+DASHBOARD_DIR="${DASHBOARD_DIR:-$HOME/openclaw-dashboard}"
 EXPORT_DIR="${EXPORT_DIR:-${SCRIPT_DIR}/../export-latest}"
+NANOCLAW_DIR="${NANOCLAW_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 LOG_DIR="${SCRIPT_DIR}/../logs"
 LOG_FILE="${LOG_DIR}/07-migrate-dashboard-$(date +%Y%m%d_%H%M%S).log"
 DASHBOARD_PORT="${DASHBOARD_PORT:-3000}"
@@ -30,72 +37,65 @@ echo "  Fase 7: Migracao do Dashboard Mission Control"
 echo "============================================================"
 echo ""
 log "Inicio: $(date)"
+log "Dashboard destino: ${DASHBOARD_DIR}"
 
-DASHBOARD_SRC="${EXPORT_DIR}/offices/dashboard"
-DASHBOARD_DST="${OPENCLAW_DIR}/offices/dashboard"
-
-# --- 7.1 Copiar dashboard ---------------------------------------------------
-log "=== Copiando Dashboard ==="
-
-if [[ ! -d "${DASHBOARD_SRC}" ]]; then
-  # Tentar diretamente do NanoClaw
-  NANOCLAW_DIR="${NANOCLAW_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
-  if [[ -d "${NANOCLAW_DIR}/offices/dashboard" ]]; then
-    DASHBOARD_SRC="${NANOCLAW_DIR}/offices/dashboard"
-  else
-    fail "Dashboard nao encontrado"
-    exit 1
-  fi
-fi
-
-mkdir -p "${DASHBOARD_DST}"
-
-# Copiar arquivos (exceto node_modules e .next)
-rsync -av --exclude='node_modules' --exclude='.next' --exclude='.env.local' \
-  "${DASHBOARD_SRC}/" "${DASHBOARD_DST}/" >> "${LOG_FILE}" 2>&1 || \
-  cp -r "${DASHBOARD_SRC}/" "${DASHBOARD_DST}/" 2>/dev/null
-
-ok "Arquivos do dashboard copiados"
-
-# --- 7.2 Instalar dependencias ----------------------------------------------
-log "=== Instalando dependencias ==="
-
-cd "${DASHBOARD_DST}"
-if [[ -f "package.json" ]]; then
-  npm install >> "${LOG_FILE}" 2>&1
-  ok "Dependencias instaladas"
-else
-  fail "package.json nao encontrado em ${DASHBOARD_DST}"
-  exit 1
-fi
-
-# --- 7.3 Configurar variaveis de ambiente ------------------------------------
-log "=== Configurando ambiente do dashboard ==="
-
-# Encontrar banco de dados
-OC_DB=""
-for candidate in "${OPENCLAW_DIR}/store/openclaw.db" "${OPENCLAW_DIR}/store/data.db" "${OPENCLAW_DIR}/store/nanoclaw.db"; do
-  if [[ -f "${candidate}" ]]; then
-    OC_DB="${candidate}"
+# --- 7.1 Localizar dashboard fonte ------------------------------------------
+DASHBOARD_SRC=""
+for candidate in \
+  "${EXPORT_DIR}/offices/dashboard" \
+  "${NANOCLAW_DIR}/offices/dashboard"; do
+  if [[ -d "${candidate}" ]] && [[ -f "${candidate}/package.json" ]]; then
+    DASHBOARD_SRC="${candidate}"
     break
   fi
 done
 
-# Gerar segredo para NextAuth
+if [[ -z "${DASHBOARD_SRC}" ]]; then
+  fail "Dashboard nao encontrado no pacote de exportacao nem no NanoClaw"
+  exit 1
+fi
+
+log "Fonte: ${DASHBOARD_SRC}"
+
+# --- 7.2 Copiar dashboard ---------------------------------------------------
+log "=== Copiando Dashboard ==="
+
+mkdir -p "${DASHBOARD_DIR}"
+
+rsync -av --exclude='node_modules' --exclude='.next' --exclude='.env.local' \
+  "${DASHBOARD_SRC}/" "${DASHBOARD_DIR}/" >> "${LOG_FILE}" 2>&1 || \
+  cp -r "${DASHBOARD_SRC}/" "${DASHBOARD_DIR}/" 2>/dev/null
+
+ok "Arquivos copiados"
+
+# --- 7.3 Instalar dependencias ----------------------------------------------
+log "=== Instalando dependencias ==="
+
+cd "${DASHBOARD_DIR}"
+npm install >> "${LOG_FILE}" 2>&1
+ok "npm install concluido"
+
+# --- 7.4 Configurar variaveis de ambiente ------------------------------------
+log "=== Configurando ambiente ==="
+
+# O banco SQLite original esta preservado em ~/.openclaw/workspace/.migration-ref/
+MIGRATED_DB="${OPENCLAW_DIR}/workspace/.migration-ref/nanoclaw.db"
+OFFICES_PATH="${OPENCLAW_DIR}/workspace/offices"
+
 NEXTAUTH_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
 
-cat > "${DASHBOARD_DST}/.env.local" << EOF
+cat > "${DASHBOARD_DIR}/.env.local" << EOF
 # Dashboard Mission Control - Configuracao
-# Gerado automaticamente em $(date -Iseconds)
+# Gerado em $(date -Iseconds)
 
-# Caminho para o banco de dados SQLite
-DATABASE_PATH=${OC_DB:-${OPENCLAW_DIR}/store/data.db}
+# Banco de dados (SQLite migrado do NanoClaw)
+DATABASE_PATH=${MIGRATED_DB}
 
-# Caminho raiz do projeto OpenClaw
-PROJECT_ROOT=${OPENCLAW_DIR}
+# Caminho para offices (dentro do state dir do OpenClaw)
+OFFICES_PATH=${OFFICES_PATH}
 
-# Caminho para offices
-OFFICES_PATH=${OPENCLAW_DIR}/offices
+# State dir do OpenClaw
+OPENCLAW_STATE_DIR=${OPENCLAW_DIR}
 
 # NextAuth
 NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
@@ -107,42 +107,28 @@ EOF
 
 ok "Arquivo .env.local criado"
 
-# --- 7.4 Atualizar paths no codigo ------------------------------------------
-log "=== Atualizando paths hardcoded ==="
-
-# Procurar por paths do NanoClaw no codigo do dashboard e substituir
-find "${DASHBOARD_DST}/src" -name "*.ts" -o -name "*.tsx" | while read -r file; do
-  if grep -q "nanoclaw" "${file}" 2>/dev/null; then
-    # Substituir referencias a nanoclaw por openclaw (preservando case)
-    sed -i "s|/nanoclaw/|/openclaw/|g" "${file}" 2>/dev/null || true
-    sed -i "s|nanoclaw\.db|data.db|g" "${file}" 2>/dev/null || true
-    log "  Atualizado: ${file}"
-  fi
-done
-
-ok "Paths atualizados"
-
 # --- 7.5 Build do dashboard -------------------------------------------------
 log "=== Compilando dashboard ==="
 
-cd "${DASHBOARD_DST}"
+cd "${DASHBOARD_DIR}"
 if npm run build >> "${LOG_FILE}" 2>&1; then
-  ok "Build concluido com sucesso"
+  ok "Build concluido"
 else
   warn "Build falhou - verifique o log: ${LOG_FILE}"
-  warn "Pode ser necessario ajustar configuracoes manualmente"
 fi
 
 # --- 7.6 Configurar PM2 ----------------------------------------------------
 log "=== Configurando PM2 ==="
 
 if command -v pm2 &>/dev/null; then
-  # Criar configuracao PM2
-  cat > "${DASHBOARD_DST}/ecosystem.config.js" << EOF
+  mkdir -p "$(dirname "${OPENCLAW_DIR}")/logs" 2>/dev/null || mkdir -p "${DASHBOARD_DIR}/logs"
+  LOG_PATH="${DASHBOARD_DIR}/logs"
+
+  cat > "${DASHBOARD_DIR}/ecosystem.config.js" << EOF
 module.exports = {
   apps: [{
     name: 'openclaw-dashboard',
-    cwd: '${DASHBOARD_DST}',
+    cwd: '${DASHBOARD_DIR}',
     script: 'npm',
     args: 'start',
     env: {
@@ -150,77 +136,69 @@ module.exports = {
       PORT: ${DASHBOARD_PORT}
     },
     max_memory_restart: '512M',
-    log_file: '${OPENCLAW_DIR}/logs/dashboard.log',
-    error_file: '${OPENCLAW_DIR}/logs/dashboard-error.log',
+    log_file: '${LOG_PATH}/dashboard.log',
+    error_file: '${LOG_PATH}/dashboard-error.log',
     time: true
   }]
 };
 EOF
 
-  # Iniciar com PM2
-  cd "${DASHBOARD_DST}"
   pm2 delete openclaw-dashboard 2>/dev/null || true
   pm2 start ecosystem.config.js >> "${LOG_FILE}" 2>&1
   pm2 save >> "${LOG_FILE}" 2>&1
   ok "Dashboard registrado no PM2"
 else
   warn "PM2 nao encontrado. Instale com: npm install -g pm2"
-  info "Apos instalar, execute:"
-  info "  cd ${DASHBOARD_DST}"
-  info "  pm2 start ecosystem.config.js"
-  info "  pm2 save"
-  info "  pm2 startup"
+  info "Apos instalar: cd ${DASHBOARD_DIR} && pm2 start ecosystem.config.js && pm2 save"
 fi
 
-# --- 7.7 Configurar Nginx (opcional) ----------------------------------------
+# --- 7.7 Nginx (opcional) ---------------------------------------------------
 log "=== Verificando Nginx ==="
 
 if command -v nginx &>/dev/null; then
-  NGINX_CONF="/etc/nginx/sites-available/openclaw-dashboard"
-
-  cat > "/tmp/openclaw-dashboard-nginx.conf" << EOF
+  cat > "/tmp/openclaw-dashboard-nginx.conf" << 'EOF'
 server {
     listen 80;
-    server_name _;  # Altere para seu dominio
+    server_name _;
 
     location / {
-        proxy_pass http://127.0.0.1:${DASHBOARD_PORT};
+        proxy_pass http://127.0.0.1:DASHBOARD_PORT_PLACEHOLDER;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
     }
 }
 EOF
+  sed -i "s/DASHBOARD_PORT_PLACEHOLDER/${DASHBOARD_PORT}/" /tmp/openclaw-dashboard-nginx.conf
 
-  info "Configuracao Nginx gerada em /tmp/openclaw-dashboard-nginx.conf"
-  info "Para ativar:"
-  info "  sudo cp /tmp/openclaw-dashboard-nginx.conf ${NGINX_CONF}"
-  info "  sudo ln -sf ${NGINX_CONF} /etc/nginx/sites-enabled/"
+  info "Config Nginx gerada em /tmp/openclaw-dashboard-nginx.conf"
+  info "  sudo cp /tmp/openclaw-dashboard-nginx.conf /etc/nginx/sites-available/openclaw-dashboard"
+  info "  sudo ln -sf /etc/nginx/sites-available/openclaw-dashboard /etc/nginx/sites-enabled/"
   info "  sudo nginx -t && sudo systemctl reload nginx"
 else
   log "Nginx nao encontrado (opcional)"
 fi
 
-# --- 7.8 Testar dashboard ---------------------------------------------------
+# --- 7.8 Testar -------------------------------------------------------------
 log "=== Testando dashboard ==="
 
-sleep 3  # Aguardar startup
-
+sleep 3
 if curl -sf "http://localhost:${DASHBOARD_PORT}" > /dev/null 2>&1; then
   ok "Dashboard acessivel em http://localhost:${DASHBOARD_PORT}"
 else
-  warn "Dashboard nao respondendo na porta ${DASHBOARD_PORT}"
-  warn "Verifique logs: pm2 logs openclaw-dashboard"
+  warn "Dashboard nao respondendo. Verifique: pm2 logs openclaw-dashboard"
 fi
 
 echo ""
 echo "============================================================"
-echo -e "${GREEN}  MIGRACAO DO DASHBOARD CONCLUIDA${NC}"
-echo "  URL: http://localhost:${DASHBOARD_PORT}"
+echo -e "${GREEN}  DASHBOARD MIGRADO${NC}"
+echo "  Local: ${DASHBOARD_DIR}"
+echo "  URL:   http://localhost:${DASHBOARD_PORT}"
+echo "  Acesso remoto: ssh -N -L ${DASHBOARD_PORT}:localhost:${DASHBOARD_PORT} user@host"
 echo "============================================================"
 log "Fim: $(date)"

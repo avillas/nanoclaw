@@ -4,9 +4,14 @@
 # Projeto: Migracao NanoClaw -> OpenClaw
 # ============================================================================
 #
-# Este script instala o OpenClaw do zero em uma maquina Linux,
-# incluindo todas as dependencias do sistema, configuracao do
-# container runtime e build inicial.
+# OpenClaw e instalado via npm global ou script de instalacao oficial.
+# O diretorio de estado (~/.openclaw) e criado automaticamente e contem:
+#   openclaw.json    - config principal
+#   workspace/       - IDENTITY.md, SOUL.md, USER.md, MEMORY.md
+#   agents/          - agentes (cada um com sessions/ e workspace/)
+#   skills/          - skills compartilhadas
+#   cron/            - tarefas agendadas (jobs.json)
+#   auth-profiles.json - credenciais
 #
 # Pode ser pulado se o OpenClaw ja estiver instalado.
 # ============================================================================
@@ -17,8 +22,6 @@ source "${SCRIPT_DIR}/config.env" 2>/dev/null || true
 
 # --- Configuracao -----------------------------------------------------------
 OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
-OPENCLAW_REPO="${OPENCLAW_REPO:-https://github.com/openclaw/openclaw.git}"
-OPENCLAW_BRANCH="${OPENCLAW_BRANCH:-main}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
 LOG_DIR="${SCRIPT_DIR}/../logs"
 LOG_FILE="${LOG_DIR}/00-install-$(date +%Y%m%d_%H%M%S).log"
@@ -52,19 +55,12 @@ run_sudo() {
   fi
 }
 
-# Detectar gerenciador de pacotes
 detect_pkg_manager() {
-  if command -v apt-get &>/dev/null; then
-    echo "apt"
-  elif command -v dnf &>/dev/null; then
-    echo "dnf"
-  elif command -v yum &>/dev/null; then
-    echo "yum"
-  elif command -v pacman &>/dev/null; then
-    echo "pacman"
-  else
-    echo "unknown"
-  fi
+  if command -v apt-get &>/dev/null; then echo "apt"
+  elif command -v dnf &>/dev/null; then echo "dnf"
+  elif command -v yum &>/dev/null; then echo "yum"
+  elif command -v pacman &>/dev/null; then echo "pacman"
+  else echo "unknown"; fi
 }
 
 # --- Cabecalho --------------------------------------------------------------
@@ -76,16 +72,19 @@ echo "============================================================"
 echo ""
 log "Inicio: $(date)"
 log "Destino: ${REMOTE_HOST:-localhost}"
-log "Diretorio: ${OPENCLAW_DIR}"
-log "Repositorio: ${OPENCLAW_REPO}"
-log "Branch: ${OPENCLAW_BRANCH}"
+log "State dir: ${OPENCLAW_DIR}"
 log "Log: ${LOG_FILE}"
 
 # --- Verificar se ja esta instalado -----------------------------------------
-if run_on_target "[[ -f '${OPENCLAW_DIR}/package.json' ]]" 2>/dev/null; then
-  OC_VERSION=$(run_on_target "node -e \"console.log(require('${OPENCLAW_DIR}/package.json').version)\"" 2>/dev/null || echo "?")
+if run_on_target "command -v openclaw" &>/dev/null 2>&1; then
+  OC_VERSION=$(run_on_target "openclaw --version 2>/dev/null" || echo "?")
   echo ""
-  echo -e "${YELLOW}OpenClaw ja esta instalado em ${OPENCLAW_DIR} (v${OC_VERSION})${NC}"
+  echo -e "${YELLOW}OpenClaw ja esta instalado (${OC_VERSION})${NC}"
+
+  if run_on_target "[[ -f '${OPENCLAW_DIR}/openclaw.json' ]] || [[ -f '${OPENCLAW_DIR}/clawdbot.json' ]]" 2>/dev/null; then
+    ok "State dir existe em ${OPENCLAW_DIR}"
+  fi
+
   echo ""
   read -p "Deseja reinstalar/atualizar? (s/N) " -n 1 -r
   echo ""
@@ -107,7 +106,6 @@ case "${PKG_MANAGER}" in
   apt)
     log "Atualizando repositorios..."
     run_sudo "apt-get update -qq" >> "${LOG_FILE}" 2>&1
-
     log "Instalando pacotes base..."
     run_sudo "apt-get install -y -qq \
       curl wget git build-essential sqlite3 \
@@ -115,33 +113,23 @@ case "${PKG_MANAGER}" in
       python3 python3-pip jq unzip" >> "${LOG_FILE}" 2>&1
     ok "Pacotes base instalados (apt)"
     ;;
-
   dnf)
-    log "Instalando pacotes base..."
     run_sudo "dnf install -y -q \
       curl wget git gcc gcc-c++ make sqlite \
-      ca-certificates gnupg2 \
-      python3 python3-pip jq unzip" >> "${LOG_FILE}" 2>&1
+      ca-certificates gnupg2 python3 python3-pip jq unzip" >> "${LOG_FILE}" 2>&1
     ok "Pacotes base instalados (dnf)"
     ;;
-
   yum)
-    log "Instalando pacotes base..."
     run_sudo "yum install -y -q \
       curl wget git gcc gcc-c++ make sqlite \
-      ca-certificates gnupg2 \
-      python3 python3-pip jq unzip" >> "${LOG_FILE}" 2>&1
+      ca-certificates gnupg2 python3 python3-pip jq unzip" >> "${LOG_FILE}" 2>&1
     ok "Pacotes base instalados (yum)"
     ;;
-
   pacman)
-    log "Instalando pacotes base..."
     run_sudo "pacman -Sy --noconfirm \
-      curl wget git base-devel sqlite \
-      python python-pip jq unzip" >> "${LOG_FILE}" 2>&1
+      curl wget git base-devel sqlite python python-pip jq unzip" >> "${LOG_FILE}" 2>&1
     ok "Pacotes base instalados (pacman)"
     ;;
-
   *)
     warn "Gerenciador de pacotes nao reconhecido. Instale manualmente:"
     warn "  git, curl, sqlite3, python3, jq, build-essential/gcc"
@@ -155,15 +143,13 @@ step "0.2 Verificando/instalando Node.js"
 
 NODE_INSTALLED=$(run_on_target "node --version 2>/dev/null" || echo "")
 
-if [[ "${NODE_INSTALLED}" =~ ^v(2[0-9]|[3-9][0-9]) ]]; then
+if [[ "${NODE_INSTALLED}" =~ ^v(2[2-9]|[3-9][0-9]) ]]; then
   ok "Node.js ja instalado: ${NODE_INSTALLED}"
 else
-  log "Instalando Node.js ${NODE_MAJOR}..."
+  log "Instalando Node.js ${NODE_MAJOR}... (OpenClaw requer >= 22.14)"
 
   case "${PKG_MANAGER}" in
     apt)
-      # NodeSource oficial
-      run_sudo "mkdir -p /etc/apt/keyrings" 2>/dev/null || true
       run_on_target "curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | sudo -E bash -" >> "${LOG_FILE}" 2>&1
       run_sudo "apt-get install -y -qq nodejs" >> "${LOG_FILE}" 2>&1
       ;;
@@ -175,7 +161,6 @@ else
       run_sudo "pacman -S --noconfirm nodejs npm" >> "${LOG_FILE}" 2>&1
       ;;
     *)
-      # Fallback: nvm
       log "Instalando via nvm..."
       run_on_target 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash' >> "${LOG_FILE}" 2>&1
       run_on_target "export NVM_DIR=\"\$HOME/.nvm\" && source \"\$NVM_DIR/nvm.sh\" && nvm install ${NODE_MAJOR}" >> "${LOG_FILE}" 2>&1
@@ -200,59 +185,45 @@ else
 
   case "${PKG_MANAGER}" in
     apt)
-      # Docker oficial
       run_sudo "install -m 0755 -d /etc/apt/keyrings" 2>/dev/null || true
       run_on_target "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null" >> "${LOG_FILE}" 2>&1 || true
-
       DISTRO=$(run_on_target "lsb_release -cs 2>/dev/null || echo jammy")
       ARCH=$(run_on_target "dpkg --print-architecture 2>/dev/null || echo amd64")
-
       run_sudo "echo \"deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${DISTRO} stable\" > /etc/apt/sources.list.d/docker.list" 2>/dev/null || true
-
       run_sudo "apt-get update -qq" >> "${LOG_FILE}" 2>&1
       run_sudo "apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" >> "${LOG_FILE}" 2>&1
       ;;
-
     dnf)
       run_sudo "dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo" >> "${LOG_FILE}" 2>&1
       run_sudo "dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" >> "${LOG_FILE}" 2>&1
       ;;
-
     yum)
       run_sudo "yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo" >> "${LOG_FILE}" 2>&1
       run_sudo "yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" >> "${LOG_FILE}" 2>&1
       ;;
-
     pacman)
       run_sudo "pacman -S --noconfirm docker docker-compose docker-buildx" >> "${LOG_FILE}" 2>&1
       ;;
-
     *)
       warn "Instale o Docker manualmente: https://docs.docker.com/engine/install/"
       ;;
   esac
 
-  # Habilitar e iniciar Docker
   run_sudo "systemctl enable docker" >> "${LOG_FILE}" 2>&1 || true
   run_sudo "systemctl start docker" >> "${LOG_FILE}" 2>&1 || true
 
-  # Adicionar usuario ao grupo docker (evita necessidade de sudo)
   CURRENT_USER=$(run_on_target "whoami")
   run_sudo "usermod -aG docker ${CURRENT_USER}" >> "${LOG_FILE}" 2>&1 || true
-  warn "Voce pode precisar fazer logout/login para o grupo docker ter efeito"
-  warn "Ou execute: newgrp docker"
+  warn "Pode ser necessario logout/login para o grupo docker ter efeito (ou: newgrp docker)"
 
   DOCKER_VER=$(run_on_target "docker --version 2>/dev/null" || echo "verificar apos login")
   ok "Docker instalado: ${DOCKER_VER}"
 fi
 
-# Verificar se Docker esta rodando
 if run_on_target "docker info" &>/dev/null 2>&1; then
   ok "Docker daemon esta rodando"
 else
-  warn "Docker instalado mas daemon nao esta acessivel"
-  warn "Verifique: sudo systemctl status docker"
-  warn "Se for permissao: newgrp docker (ou logout/login)"
+  warn "Docker daemon nao acessivel. Verifique: sudo systemctl status docker"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -260,16 +231,16 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 step "0.4 Instalando ferramentas adicionais"
 
-# PM2 (para dashboard)
+# PM2
 if ! run_on_target "command -v pm2" &>/dev/null; then
   log "Instalando PM2..."
-  run_on_target "npm install -g pm2" >> "${LOG_FILE}" 2>&1 || warn "Falha ao instalar PM2 (pode precisar de sudo)"
+  run_on_target "npm install -g pm2" >> "${LOG_FILE}" 2>&1 || run_sudo "npm install -g pm2" >> "${LOG_FILE}" 2>&1 || warn "Falha ao instalar PM2"
   ok "PM2 instalado"
 else
   ok "PM2 ja instalado"
 fi
 
-# GitHub CLI (opcional, para clonar repos privados)
+# GitHub CLI
 if ! run_on_target "command -v gh" &>/dev/null; then
   log "Instalando GitHub CLI..."
   case "${PKG_MANAGER}" in
@@ -278,162 +249,121 @@ if ! run_on_target "command -v gh" &>/dev/null; then
       run_sudo "echo 'deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' > /etc/apt/sources.list.d/github-cli.list" 2>/dev/null || true
       run_sudo "apt-get update -qq && apt-get install -y -qq gh" >> "${LOG_FILE}" 2>&1 || true
       ;;
-    dnf|yum)
-      run_sudo "${PKG_MANAGER} install -y gh" >> "${LOG_FILE}" 2>&1 || true
-      ;;
-    pacman)
-      run_sudo "pacman -S --noconfirm github-cli" >> "${LOG_FILE}" 2>&1 || true
-      ;;
+    dnf|yum) run_sudo "${PKG_MANAGER} install -y gh" >> "${LOG_FILE}" 2>&1 || true ;;
+    pacman) run_sudo "pacman -S --noconfirm github-cli" >> "${LOG_FILE}" 2>&1 || true ;;
   esac
-  if run_on_target "command -v gh" &>/dev/null; then
-    ok "GitHub CLI instalado"
-  else
-    warn "GitHub CLI nao instalado (opcional)"
-  fi
+  run_on_target "command -v gh" &>/dev/null && ok "GitHub CLI instalado" || warn "GitHub CLI nao instalado (opcional)"
 else
   ok "GitHub CLI ja instalado"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 0.5 CLONAR OPENCLAW
+# 0.5 INSTALAR OPENCLAW
 # ═══════════════════════════════════════════════════════════════════════════════
-step "0.5 Clonando OpenClaw"
+step "0.5 Instalando OpenClaw"
 
-if run_on_target "[[ -d '${OPENCLAW_DIR}/.git' ]]" 2>/dev/null; then
-  log "Repositorio ja existe. Atualizando..."
-  run_on_target "cd '${OPENCLAW_DIR}' && git fetch origin && git pull origin ${OPENCLAW_BRANCH}" >> "${LOG_FILE}" 2>&1 || warn "Falha ao atualizar (pode ter alteracoes locais)"
-  ok "Repositorio atualizado"
+if run_on_target "command -v openclaw" &>/dev/null 2>&1; then
+  OC_VER=$(run_on_target "openclaw --version 2>/dev/null" || echo "?")
+  log "OpenClaw ja instalado: ${OC_VER}. Atualizando..."
+  run_on_target "npm update -g openclaw" >> "${LOG_FILE}" 2>&1 || true
+  ok "OpenClaw atualizado"
 else
-  log "Clonando ${OPENCLAW_REPO}..."
+  log "Instalando OpenClaw via npm..."
 
-  # Criar diretorio pai se necessario
-  run_on_target "mkdir -p '$(dirname "${OPENCLAW_DIR}")'"
-
-  if run_on_target "git clone --branch '${OPENCLAW_BRANCH}' '${OPENCLAW_REPO}' '${OPENCLAW_DIR}'" >> "${LOG_FILE}" 2>&1; then
-    ok "Repositorio clonado em ${OPENCLAW_DIR}"
+  # Metodo 1: npm global
+  if run_on_target "npm install -g openclaw" >> "${LOG_FILE}" 2>&1; then
+    ok "OpenClaw instalado via npm"
+  # Metodo 2: script oficial
+  elif run_on_target "curl -fsSL https://openclaw.ai/install.sh | bash" >> "${LOG_FILE}" 2>&1; then
+    ok "OpenClaw instalado via script oficial"
+  # Metodo 3: install-cli (prefix local em ~/.openclaw)
+  elif run_on_target "curl -fsSL https://openclaw.ai/install-cli.sh | bash" >> "${LOG_FILE}" 2>&1; then
+    ok "OpenClaw instalado via install-cli (local prefix)"
   else
-    # Tentar com gh (caso precise autenticacao)
-    if run_on_target "command -v gh" &>/dev/null; then
-      log "Tentando clonar via GitHub CLI..."
-      run_on_target "gh repo clone '${OPENCLAW_REPO}' '${OPENCLAW_DIR}' -- --branch '${OPENCLAW_BRANCH}'" >> "${LOG_FILE}" 2>&1 || die "Falha ao clonar repositorio"
-      ok "Repositorio clonado via gh"
-    else
-      die "Falha ao clonar ${OPENCLAW_REPO}. Verifique URL e permissoes."
-    fi
+    die "Falha ao instalar OpenClaw. Instale manualmente: npm install -g openclaw"
   fi
 fi
 
-# Verificar versao
-OC_VERSION=$(run_on_target "node -e \"console.log(require('${OPENCLAW_DIR}/package.json').version)\"" 2>/dev/null || echo "desconhecida")
-log "Versao do OpenClaw: ${OC_VERSION}"
+OC_VERSION=$(run_on_target "openclaw --version 2>/dev/null" || echo "desconhecida")
+ok "OpenClaw versao: ${OC_VERSION}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 0.6 INSTALAR DEPENDENCIAS DO OPENCLAW
+# 0.6 INICIALIZAR STATE DIR
 # ═══════════════════════════════════════════════════════════════════════════════
-step "0.6 Instalando dependencias do OpenClaw"
+step "0.6 Verificando state dir do OpenClaw"
 
-run_on_target "cd '${OPENCLAW_DIR}' && npm install" >> "${LOG_FILE}" 2>&1
-ok "npm install concluido"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 0.7 BUILD INICIAL
-# ═══════════════════════════════════════════════════════════════════════════════
-step "0.7 Compilando OpenClaw"
-
-if run_on_target "cd '${OPENCLAW_DIR}' && npm run build" >> "${LOG_FILE}" 2>&1; then
-  ok "Build concluido com sucesso"
+# O state dir e criado automaticamente na primeira execucao.
+# Verificar se ja existe; se nao, criamos a estrutura base.
+if run_on_target "[[ -f '${OPENCLAW_DIR}/openclaw.json' ]] || [[ -f '${OPENCLAW_DIR}/clawdbot.json' ]]" 2>/dev/null; then
+  ok "State dir ja inicializado em ${OPENCLAW_DIR}"
+  CONFIG_FILE=$(run_on_target "[[ -f '${OPENCLAW_DIR}/openclaw.json' ]] && echo 'openclaw.json' || echo 'clawdbot.json'" 2>/dev/null)
+  log "Config: ${CONFIG_FILE}"
 else
-  warn "Build falhou - pode ser normal antes da configuracao completa"
-  warn "Verifique o log: ${LOG_FILE}"
+  log "Criando estrutura base do state dir..."
+
+  run_on_target "mkdir -p '${OPENCLAW_DIR}/workspace/memory'"
+  run_on_target "mkdir -p '${OPENCLAW_DIR}/workspace/skills'"
+  run_on_target "mkdir -p '${OPENCLAW_DIR}/agents/main/sessions'"
+  run_on_target "mkdir -p '${OPENCLAW_DIR}/skills'"
+  run_on_target "mkdir -p '${OPENCLAW_DIR}/cron'"
+
+  # Criar openclaw.json minimo
+  run_on_target "cat > '${OPENCLAW_DIR}/openclaw.json' << 'CFGEOF'
+{
+  \"agents\": {
+    \"defaults\": {
+      \"userTimezone\": \"America/Sao_Paulo\",
+      \"timeoutSeconds\": 1800
+    }
+  },
+  \"channels\": {},
+  \"mcp\": { \"servers\": {} },
+  \"skills\": { \"entries\": {} }
+}
+CFGEOF"
+
+  # Criar workspace files base
+  run_on_target "cat > '${OPENCLAW_DIR}/workspace/IDENTITY.md' << 'IDEOF'
+name: Andy
+language: pt-BR
+IDEOF"
+
+  run_on_target "cat > '${OPENCLAW_DIR}/workspace/SOUL.md' << 'SEOF'
+# Soul
+
+Voce e um assistente pessoal inteligente e prestativo.
+SEOF"
+
+  run_on_target "cat > '${OPENCLAW_DIR}/workspace/USER.md' << 'UEOF'
+# User
+
+Owner preferences and context.
+UEOF"
+
+  run_on_target "cat > '${OPENCLAW_DIR}/workspace/MEMORY.md' << 'MEOF'
+# Memory
+
+Long-term memory and learned context.
+MEOF"
+
+  # Criar cron/jobs.json vazio
+  run_on_target "echo '{\"version\":1,\"jobs\":[]}' > '${OPENCLAW_DIR}/cron/jobs.json'"
+
+  # Criar auth-profiles.json vazio
+  run_on_target "echo '{\"version\":1,\"profiles\":{}}' > '${OPENCLAW_DIR}/auth-profiles.json'"
+
+  ok "State dir criado em ${OPENCLAW_DIR}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 0.8 CONSTRUIR CONTAINER IMAGE
+# 0.7 CONFIGURAR SERVICO SYSTEMD
 # ═══════════════════════════════════════════════════════════════════════════════
-step "0.8 Construindo imagem de container do agente"
-
-if [[ -f "${OPENCLAW_DIR}/container/build.sh" ]]; then
-  if run_on_target "cd '${OPENCLAW_DIR}' && bash container/build.sh" >> "${LOG_FILE}" 2>&1; then
-    ok "Imagem de container construida"
-  else
-    warn "Falha ao construir imagem de container"
-    warn "Tente manualmente: cd ${OPENCLAW_DIR} && bash container/build.sh"
-  fi
-else
-  warn "container/build.sh nao encontrado - container sera construido na migracao"
-fi
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 0.9 CRIAR DIRETORIOS ESSENCIAIS
-# ═══════════════════════════════════════════════════════════════════════════════
-step "0.9 Criando estrutura de diretorios"
-
-run_on_target "mkdir -p '${OPENCLAW_DIR}/store'"
-run_on_target "mkdir -p '${OPENCLAW_DIR}/logs'"
-run_on_target "mkdir -p '${OPENCLAW_DIR}/groups/main'"
-run_on_target "mkdir -p '${OPENCLAW_DIR}/groups/global'"
-run_on_target "mkdir -p '${OPENCLAW_DIR}/offices'"
-run_on_target "mkdir -p '${OPENCLAW_DIR}/backups'"
-run_on_target "mkdir -p '${HOME}/.config/openclaw'"
-
-ok "Estrutura de diretorios criada"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 0.10 CRIAR .env BASE
-# ═══════════════════════════════════════════════════════════════════════════════
-step "0.10 Preparando arquivo .env"
-
-OC_ENV="${OPENCLAW_DIR}/.env"
-if [[ ! -f "${OC_ENV}" ]]; then
-  cat > "${OC_ENV}" << 'ENVEOF'
-# ============================================================================
-# OpenClaw - Configuracao
-# Gerado automaticamente pela fase de instalacao
-# Edite os valores conforme necessario
-# ============================================================================
-
-# Nome do assistente (usado como trigger em grupos)
-ASSISTANT_NAME=Andy
-
-# Timezone (usado pelo agendador de tarefas)
-TZ=America/Sao_Paulo
-
-# Imagem do container de agente
-CONTAINER_IMAGE=nanoclaw-agent:latest
-
-# Timeout do container (ms) - padrao: 30 min
-CONTAINER_TIMEOUT=1800000
-
-# Maximo de containers simultaneos
-MAX_CONCURRENT_CONTAINERS=5
-
-# Timeout de ociosidade (ms)
-IDLE_TIMEOUT=1800000
-
-# --- Credenciais (adicione conforme necessario) ---
-# ANTHROPIC_API_KEY=
-# TELEGRAM_BOT_TOKEN=
-# SLACK_BOT_TOKEN=
-# SLACK_APP_TOKEN=
-# DISCORD_BOT_TOKEN=
-# GMAIL_CLIENT_ID=
-# GMAIL_CLIENT_SECRET=
-# GMAIL_REFRESH_TOKEN=
-# ONECLI_URL=
-ENVEOF
-
-  ok "Arquivo .env base criado"
-else
-  ok "Arquivo .env ja existe"
-fi
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 0.11 CONFIGURAR SYSTEMD (preparacao)
-# ═══════════════════════════════════════════════════════════════════════════════
-step "0.11 Preparando servico systemd"
+step "0.7 Preparando servico systemd"
 
 SYSTEMD_DIR="${HOME}/.config/systemd/user"
 run_on_target "mkdir -p '${SYSTEMD_DIR}'"
+
+OC_BIN=$(run_on_target "which openclaw 2>/dev/null" || echo "/usr/local/bin/openclaw")
 
 cat > "/tmp/openclaw.service" << EOF
 [Unit]
@@ -442,11 +372,11 @@ After=network.target docker.service
 
 [Service]
 Type=simple
-WorkingDirectory=${OPENCLAW_DIR}
-ExecStart=$(which node) ${OPENCLAW_DIR}/dist/index.js
+ExecStart=${OC_BIN} --daemon
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
+Environment=OPENCLAW_STATE_DIR=${OPENCLAW_DIR}
 
 [Install]
 WantedBy=default.target
@@ -460,8 +390,6 @@ fi
 
 run_on_target "systemctl --user daemon-reload" 2>/dev/null || true
 run_on_target "systemctl --user enable openclaw" 2>/dev/null || true
-
-# Habilitar linger (permite servicos do usuario rodarem sem sessao ativa)
 run_sudo "loginctl enable-linger $(run_on_target 'whoami')" 2>/dev/null || true
 
 ok "Servico systemd preparado (nao iniciado ainda)"
@@ -476,25 +404,20 @@ echo -e "${GREEN}  INSTALACAO DO OPENCLAW CONCLUIDA${NC}"
 echo "============================================================"
 echo ""
 
-# Resumo do que foi instalado
-log "Resumo da instalacao:"
-echo ""
 NODE_V=$(run_on_target "node --version 2>/dev/null" || echo "?")
 NPM_V=$(run_on_target "npm --version 2>/dev/null" || echo "?")
 DOCKER_V=$(run_on_target "docker --version 2>/dev/null" || echo "nao disponivel")
-GIT_V=$(run_on_target "git --version 2>/dev/null" || echo "?")
 PM2_V=$(run_on_target "pm2 --version 2>/dev/null" || echo "nao instalado")
 
-echo -e "  Node.js:   ${NODE_V}"
-echo -e "  npm:       ${NPM_V}"
-echo -e "  Docker:    ${DOCKER_V}"
-echo -e "  Git:       ${GIT_V}"
-echo -e "  PM2:       ${PM2_V}"
-echo -e "  OpenClaw:  v${OC_VERSION} em ${OPENCLAW_DIR}"
+echo -e "  Node.js:    ${NODE_V}"
+echo -e "  npm:        ${NPM_V}"
+echo -e "  Docker:     ${DOCKER_V}"
+echo -e "  PM2:        ${PM2_V}"
+echo -e "  OpenClaw:   ${OC_VERSION}"
+echo -e "  State dir:  ${OPENCLAW_DIR}"
 echo ""
 echo "Proximos passos:"
-echo "  1. Edite ${OPENCLAW_DIR}/.env com suas credenciais"
-echo "  2. Execute a Fase 1: ./01-validate-environment.sh"
-echo "  3. Ou execute tudo: ./run-all.sh"
+echo "  1. Execute a Fase 1: ./01-validate-environment.sh"
+echo "  2. Ou execute tudo: ./run-all.sh"
 echo ""
 log "Fim: $(date)"

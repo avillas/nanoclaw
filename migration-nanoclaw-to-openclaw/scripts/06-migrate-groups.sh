@@ -3,6 +3,17 @@
 # Fase 6: Migracao de Grupos e Memoria
 # Projeto: Migracao NanoClaw -> OpenClaw
 # ============================================================================
+#
+# NanoClaw: groups/{nome}/CLAUDE.md (um dir por grupo, cada um com memoria)
+# OpenClaw: workspace/SOUL.md + MEMORY.md (compartilhado) +
+#           agents/<id>/sessions/sessions.json (historico por grupo)
+#           workspace/memory/YYYY-MM-DD.md (memoria diaria)
+#
+# Este script:
+#   1. Consolida CLAUDE.md dos grupos em workspace/MEMORY.md
+#   2. Cria entradas de memoria diaria a partir dos dados
+#   3. Garante que grupos estejam em sessions.json
+# ============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -28,134 +39,101 @@ echo "============================================================"
 echo ""
 log "Inicio: $(date)"
 
-# --- 6.1 Copiar estrutura de grupos -----------------------------------------
-log "=== Copiando grupos ==="
-
 GROUPS_SRC="${EXPORT_DIR}/groups"
-GROUPS_DST="${OPENCLAW_DIR}/groups"
-
 if [[ ! -d "${GROUPS_SRC}" ]]; then
   warn "Diretorio de grupos nao encontrado em ${GROUPS_SRC}"
   exit 0
 fi
 
-mkdir -p "${GROUPS_DST}"
+# --- 6.1 Migrar global e main para workspace --------------------------------
+log "=== Migrando memoria global e principal ==="
+
+# global/CLAUDE.md -> ja foi para SOUL.md na fase 3
+# main/CLAUDE.md -> ja foi para MEMORY.md na fase 3
+# Verificar se foram migrados
+
+if grep -q "nanoclaw\|NanoClaw\|Migrado" "${OPENCLAW_DIR}/workspace/SOUL.md" 2>/dev/null; then
+  ok "SOUL.md ja contem dados migrados do global"
+else
+  if [[ -f "${GROUPS_SRC}/global/CLAUDE.md" ]]; then
+    echo "" >> "${OPENCLAW_DIR}/workspace/SOUL.md"
+    echo "<!-- Migrado de NanoClaw groups/global/CLAUDE.md -->" >> "${OPENCLAW_DIR}/workspace/SOUL.md"
+    cat "${GROUPS_SRC}/global/CLAUDE.md" >> "${OPENCLAW_DIR}/workspace/SOUL.md"
+    ok "Global -> SOUL.md"
+  fi
+fi
+
+if grep -q "nanoclaw\|NanoClaw\|Migrado" "${OPENCLAW_DIR}/workspace/MEMORY.md" 2>/dev/null; then
+  ok "MEMORY.md ja contem dados migrados do main"
+else
+  if [[ -f "${GROUPS_SRC}/main/CLAUDE.md" ]]; then
+    echo "" >> "${OPENCLAW_DIR}/workspace/MEMORY.md"
+    echo "<!-- Migrado de NanoClaw groups/main/CLAUDE.md -->" >> "${OPENCLAW_DIR}/workspace/MEMORY.md"
+    cat "${GROUPS_SRC}/main/CLAUDE.md" >> "${OPENCLAW_DIR}/workspace/MEMORY.md"
+    ok "Main -> MEMORY.md"
+  fi
+fi
+
+# --- 6.2 Migrar grupos individuais como notas de memoria ---------------------
+log "=== Migrando memoria dos grupos individuais ==="
+
+mkdir -p "${OPENCLAW_DIR}/workspace/memory"
 MIGRATED=0
+TODAY=$(date +%Y-%m-%d)
+MIGRATION_MEMORY="${OPENCLAW_DIR}/workspace/memory/${TODAY}.md"
+
+# Criar arquivo de memoria do dia da migracao
+echo "# Migracao NanoClaw - Memoria dos Grupos" > "${MIGRATION_MEMORY}"
+echo "" >> "${MIGRATION_MEMORY}"
+echo "Data da migracao: $(date)" >> "${MIGRATION_MEMORY}"
+echo "" >> "${MIGRATION_MEMORY}"
 
 for group_dir in "${GROUPS_SRC}"/*/; do
   group_name=$(basename "${group_dir}")
-  dst_dir="${GROUPS_DST}/${group_name}"
 
-  mkdir -p "${dst_dir}"
+  # Pular global e main (ja migrados acima)
+  [[ "${group_name}" == "global" ]] && continue
+  [[ "${group_name}" == "main" ]] && continue
 
-  # Copiar CLAUDE.md (memoria do grupo)
   if [[ -f "${group_dir}/CLAUDE.md" ]]; then
-    if [[ -f "${dst_dir}/CLAUDE.md" ]]; then
-      # Mesclar: manter existente e adicionar conteudo novo como apendice
-      log "Grupo ${group_name}: CLAUDE.md ja existe no destino; fazendo merge"
-      cp "${dst_dir}/CLAUDE.md" "${dst_dir}/CLAUDE.md.bak"
-
-      # Adicionar separador e conteudo migrado
-      echo "" >> "${dst_dir}/CLAUDE.md"
-      echo "<!-- === Conteudo migrado do NanoClaw ($(date +%Y-%m-%d)) === -->" >> "${dst_dir}/CLAUDE.md"
-      echo "" >> "${dst_dir}/CLAUDE.md"
-      cat "${group_dir}/CLAUDE.md" >> "${dst_dir}/CLAUDE.md"
-    else
-      cp "${group_dir}/CLAUDE.md" "${dst_dir}/CLAUDE.md"
-    fi
-    ok "Grupo: ${group_name}"
-  fi
-
-  # Copiar outros arquivos do grupo (dados, estado, etc)
-  for f in "${group_dir}"*; do
-    fname=$(basename "${f}")
-    if [[ "${fname}" != "CLAUDE.md" ]] && [[ -f "${f}" ]]; then
-      cp "${f}" "${dst_dir}/"
-    fi
-  done
-
-  ((MIGRATED++))
-done
-
-ok "Total de grupos migrados: ${MIGRATED}"
-
-# --- 6.2 Verificar grupo main -----------------------------------------------
-log "=== Verificando grupo main ==="
-
-if [[ -f "${GROUPS_DST}/main/CLAUDE.md" ]]; then
-  ok "Grupo main existe com CLAUDE.md"
-  # Verificar se tem as capacidades de admin
-  if grep -q "isMain" "${GROUPS_DST}/main/CLAUDE.md" 2>/dev/null || \
-     grep -q "admin" "${GROUPS_DST}/main/CLAUDE.md" 2>/dev/null; then
-    ok "Grupo main tem configuracao administrativa"
-  else
-    warn "Grupo main pode precisar de configuracao administrativa"
-  fi
-else
-  warn "Grupo main nao tem CLAUDE.md - pode precisar ser configurado"
-fi
-
-# --- 6.3 Verificar grupo global ---------------------------------------------
-log "=== Verificando grupo global ==="
-
-if [[ -f "${GROUPS_DST}/global/CLAUDE.md" ]]; then
-  ok "Grupo global existe com CLAUDE.md"
-else
-  warn "Grupo global nao tem CLAUDE.md"
-  # Criar minimo
-  mkdir -p "${GROUPS_DST}/global"
-  cat > "${GROUPS_DST}/global/CLAUDE.md" << 'EOF'
-# Global Memory
-
-Shared read-only memory accessible by all groups.
-
-<!-- Migrated from NanoClaw - configure as needed -->
-EOF
-  ok "CLAUDE.md global criado (basico)"
-fi
-
-# --- 6.4 Verificar permissoes -----------------------------------------------
-log "=== Configurando permissoes ==="
-
-# groups/main: read-write
-chmod -R 755 "${GROUPS_DST}/main" 2>/dev/null || true
-# groups/global: outros grupos leem mas nao escrevem
-chmod -R 755 "${GROUPS_DST}/global" 2>/dev/null || true
-# Outros grupos: read-write individual
-for group_dir in "${GROUPS_DST}"/*/; do
-  group_name=$(basename "${group_dir}")
-  if [[ "${group_name}" != "main" ]] && [[ "${group_name}" != "global" ]]; then
-    chmod -R 755 "${group_dir}" 2>/dev/null || true
-  fi
-done
-ok "Permissoes configuradas"
-
-# --- 6.5 Listar grupos registrados no banco ---------------------------------
-log "=== Verificando registro de grupos no banco ==="
-
-OC_DB=""
-for candidate in "${OPENCLAW_DIR}/store/openclaw.db" "${OPENCLAW_DIR}/store/data.db" "${OPENCLAW_DIR}/store/nanoclaw.db"; do
-  if [[ -f "${candidate}" ]]; then
-    OC_DB="${candidate}"
-    break
+    echo "## Grupo: ${group_name}" >> "${MIGRATION_MEMORY}"
+    echo "" >> "${MIGRATION_MEMORY}"
+    cat "${group_dir}/CLAUDE.md" >> "${MIGRATION_MEMORY}"
+    echo "" >> "${MIGRATION_MEMORY}"
+    echo "---" >> "${MIGRATION_MEMORY}"
+    echo "" >> "${MIGRATION_MEMORY}"
+    log "  Grupo migrado: ${group_name}"
+    ((MIGRATED++))
   fi
 done
 
-if [[ -n "${OC_DB}" ]]; then
-  REG_COUNT=$(sqlite3 "${OC_DB}" "SELECT COUNT(*) FROM registered_groups;" 2>/dev/null || echo "0")
-  ok "Grupos registrados no banco: ${REG_COUNT}"
+ok "Total de grupos migrados como memoria: ${MIGRATED}"
 
-  log "Detalhes dos grupos registrados:"
-  sqlite3 -header -column "${OC_DB}" "SELECT jid, name, folder, requiresTrigger FROM registered_groups;" 2>/dev/null | while read -r line; do
-    log "  ${line}"
-  done
+# --- 6.3 Preservar grupos originais como referencia --------------------------
+log "=== Preservando grupos originais ==="
+
+mkdir -p "${OPENCLAW_DIR}/workspace/.migration-ref/groups"
+cp -r "${GROUPS_SRC}/"* "${OPENCLAW_DIR}/workspace/.migration-ref/groups/" 2>/dev/null || true
+ok "Grupos originais preservados em workspace/.migration-ref/groups/"
+
+# --- 6.4 Verificar sessions.json --------------------------------------------
+log "=== Verificando sessions.json ==="
+
+SESSIONS_FILE="${OPENCLAW_DIR}/agents/main/sessions/sessions.json"
+if [[ -f "${SESSIONS_FILE}" ]]; then
+  SESSION_COUNT=$(node -e "
+    const s = JSON.parse(require('fs').readFileSync('${SESSIONS_FILE}', 'utf-8'));
+    console.log(Object.keys(s.sessions || {}).length);
+  " 2>/dev/null || echo "?")
+  ok "Sessions.json: ${SESSION_COUNT} sessoes registradas"
 else
-  warn "Banco de dados nao encontrado para verificar registros"
+  warn "sessions.json nao encontrado (sera criado na Fase 4 ou pelo OpenClaw)"
 fi
 
 echo ""
 echo "============================================================"
 echo -e "${GREEN}  MIGRACAO DE GRUPOS CONCLUIDA${NC}"
-echo "  Grupos: ${MIGRATED}"
+echo "  Grupos individuais: ${MIGRATED}"
+echo "  Memoria: ${MIGRATION_MEMORY}"
 echo "============================================================"
 log "Fim: $(date)"

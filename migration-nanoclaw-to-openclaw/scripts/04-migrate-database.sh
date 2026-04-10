@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Fase 4: Migracao do Banco de Dados SQLite
+# Fase 4: Migracao de Dados (DB NanoClaw -> Estrutura OpenClaw)
 # Projeto: Migracao NanoClaw -> OpenClaw
+# ============================================================================
+#
+# OpenClaw nao usa SQLite da mesma forma que NanoClaw.
+# OpenClaw armazena dados em:
+#   - agents/<id>/sessions/sessions.json (historico de chats)
+#   - cron/jobs.json (tarefas agendadas)
+#   - workspace/memory/*.md (memoria diaria)
+#
+# Este script:
+#   1. Exporta dados do SQLite do NanoClaw
+#   2. Converte scheduled_tasks -> cron/jobs.json (formato OpenClaw)
+#   3. Converte registered_groups -> sessions em sessions.json
+#   4. Preserva o DB NanoClaw completo como referencia
 # ============================================================================
 set -euo pipefail
 
@@ -21,255 +34,230 @@ log()  { echo -e "${BLUE}[INFO]${NC} $*" | tee -a "${LOG_FILE}"; }
 ok()   { echo -e "${GREEN}[OK]${NC} $*" | tee -a "${LOG_FILE}"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*" | tee -a "${LOG_FILE}"; }
 fail() { echo -e "${RED}[FAIL]${NC} $*" | tee -a "${LOG_FILE}"; }
-die()  { fail "$*"; exit 1; }
 
 echo ""
 echo "============================================================"
-echo "  Fase 4: Migracao do Banco de Dados"
+echo "  Fase 4: Migracao de Dados"
 echo "============================================================"
 echo ""
 log "Inicio: $(date)"
 
-# --- Localizar bancos de dados -----------------------------------------------
+# --- Localizar banco NanoClaw ------------------------------------------------
 NANO_DB="${EXPORT_DIR}/database/nanoclaw.db"
 if [[ ! -f "${NANO_DB}" ]]; then
-  die "Banco NanoClaw nao encontrado em ${NANO_DB}"
+  warn "Banco NanoClaw nao encontrado em ${NANO_DB}"
+  warn "Pulando migracao de dados"
+  exit 0
 fi
 
-# Encontrar banco OpenClaw
-OC_DB=""
-for candidate in "${OPENCLAW_DIR}/store/openclaw.db" "${OPENCLAW_DIR}/store/data.db" "${OPENCLAW_DIR}/store/nanoclaw.db"; do
-  if [[ -f "${candidate}" ]]; then
-    OC_DB="${candidate}"
-    break
+log "NanoClaw DB: ${NANO_DB} ($(du -h "${NANO_DB}" | cut -f1))"
+
+# --- 4.1 Preservar banco completo como referencia ----------------------------
+log "=== Preservando banco NanoClaw ==="
+
+mkdir -p "${OPENCLAW_DIR}/workspace/.migration-ref"
+cp "${NANO_DB}" "${OPENCLAW_DIR}/workspace/.migration-ref/nanoclaw.db"
+ok "Banco original preservado em workspace/.migration-ref/nanoclaw.db"
+
+# --- 4.2 Converter scheduled_tasks -> cron/jobs.json -------------------------
+log "=== Migrando tarefas agendadas ==="
+
+mkdir -p "${OPENCLAW_DIR}/cron"
+
+TASK_COUNT=$(sqlite3 "${NANO_DB}" "SELECT COUNT(*) FROM scheduled_tasks WHERE status='active';" 2>/dev/null || echo "0")
+log "Tarefas ativas no NanoClaw: ${TASK_COUNT}"
+
+if [[ "${TASK_COUNT}" -gt 0 ]]; then
+  # Gerar jobs.json no formato OpenClaw
+  node -e "
+    const Database = require('better-sqlite3');
+    const fs = require('fs');
+    const path = require('path');
+
+    let db;
+    try {
+      db = new Database('${NANO_DB}', { readonly: true });
+    } catch(e) {
+      // Fallback: usar sqlite3 CLI
+      console.error('better-sqlite3 nao disponivel, gerando via template');
+      process.exit(1);
+    }
+
+    const tasks = db.prepare(\"SELECT * FROM scheduled_tasks WHERE status='active'\").all();
+
+    const jobs = tasks.map((t, i) => {
+      let schedule = {};
+      switch(t.schedule_type) {
+        case 'cron':
+          schedule = { kind: 'cron', expr: t.schedule_value, tz: process.env.TZ || 'America/Sao_Paulo' };
+          break;
+        case 'interval':
+          schedule = { kind: 'interval', ms: parseInt(t.schedule_value) };
+          break;
+        case 'once':
+          schedule = { kind: 'once', at: t.schedule_value };
+          break;
+      }
+
+      return {
+        id: 'migrated-' + (t.id || i),
+        name: 'Migrated task ' + (t.id || i),
+        description: (t.prompt || '').substring(0, 100),
+        enabled: true,
+        schedule,
+        payload: {
+          kind: 'agentTurn',
+          message: t.prompt || t.script || ''
+        },
+        sessionTarget: 'main',
+        delivery: { mode: 'silent' }
+      };
+    });
+
+    const result = { version: 1, jobs };
+    const outPath = '${OPENCLAW_DIR}/cron/jobs.json';
+
+    // Mesclar com existente se houver
+    if (fs.existsSync(outPath)) {
+      try {
+        const existing = JSON.parse(fs.readFileSync(outPath, 'utf-8'));
+        existing.jobs = [...(existing.jobs || []), ...jobs];
+        fs.writeFileSync(outPath, JSON.stringify(existing, null, 2));
+      } catch(e) {
+        fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
+      }
+    } else {
+      fs.writeFileSync(outPath, JSON.stringify(result, null, 2));
+    }
+
+    console.log('Jobs migrados: ' + jobs.length);
+    db.close();
+  " >> "${LOG_FILE}" 2>&1 && ok "Tarefas migradas para cron/jobs.json" || {
+    # Fallback sem better-sqlite3: usar sqlite3 CLI
+    log "Usando sqlite3 CLI como fallback..."
+
+    JOBS_JSON="${OPENCLAW_DIR}/cron/jobs.json"
+    if [[ ! -f "${JOBS_JSON}" ]]; then
+      echo '{"version":1,"jobs":[]}' > "${JOBS_JSON}"
+    fi
+
+    # Exportar tarefas e gerar JSON manualmente
+    sqlite3 -json "${NANO_DB}" "SELECT id, group_folder, prompt, script, schedule_type, schedule_value FROM scheduled_tasks WHERE status='active';" 2>/dev/null | \
+    node -e "
+      const fs = require('fs');
+      let input = '';
+      process.stdin.on('data', d => input += d);
+      process.stdin.on('end', () => {
+        const tasks = JSON.parse(input || '[]');
+        const jobs = tasks.map(t => ({
+          id: 'migrated-' + t.id,
+          name: 'Migrated task ' + t.id,
+          description: (t.prompt || '').substring(0, 100),
+          enabled: true,
+          schedule: t.schedule_type === 'cron'
+            ? { kind: 'cron', expr: t.schedule_value, tz: 'America/Sao_Paulo' }
+            : t.schedule_type === 'interval'
+              ? { kind: 'interval', ms: parseInt(t.schedule_value) }
+              : { kind: 'once', at: t.schedule_value },
+          payload: { kind: 'agentTurn', message: t.prompt || t.script || '' },
+          sessionTarget: 'main',
+          delivery: { mode: 'silent' }
+        }));
+
+        const existing = JSON.parse(fs.readFileSync('${JOBS_JSON}', 'utf-8'));
+        existing.jobs = [...(existing.jobs || []), ...jobs];
+        fs.writeFileSync('${JOBS_JSON}', JSON.stringify(existing, null, 2));
+        console.log('Jobs migrados: ' + jobs.length);
+      });
+    " >> "${LOG_FILE}" 2>&1 && ok "Tarefas migradas (fallback)" || warn "Falha ao migrar tarefas"
+  }
+else
+  log "Nenhuma tarefa ativa para migrar"
+fi
+
+# --- 4.3 Converter registered_groups -> sessions.json -----------------------
+log "=== Migrando sessoes de grupo ==="
+
+mkdir -p "${OPENCLAW_DIR}/agents/main/sessions"
+SESSIONS_FILE="${OPENCLAW_DIR}/agents/main/sessions/sessions.json"
+
+GROUP_COUNT=$(sqlite3 "${NANO_DB}" "SELECT COUNT(*) FROM registered_groups;" 2>/dev/null || echo "0")
+log "Grupos registrados no NanoClaw: ${GROUP_COUNT}"
+
+if [[ "${GROUP_COUNT}" -gt 0 ]]; then
+  # Gerar sessions.json com os grupos registrados
+  sqlite3 -json "${NANO_DB}" "SELECT jid, name, folder FROM registered_groups;" 2>/dev/null | \
+  node -e "
+    const fs = require('fs');
+    let input = '';
+    process.stdin.on('data', d => input += d);
+    process.stdin.on('end', () => {
+      const groups = JSON.parse(input || '[]');
+      const sessions = {};
+
+      groups.forEach(g => {
+        // Inferir canal do JID (whatsapp:xxx@g.us, telegram:-100xxx, etc)
+        let channel = 'unknown';
+        if (g.jid.includes('@g.us') || g.jid.includes('@s.whatsapp')) channel = 'whatsapp';
+        else if (g.jid.startsWith('-100') || g.jid.match(/^-?\\d+$/)) channel = 'telegram';
+        else if (g.jid.startsWith('C') || g.jid.startsWith('D')) channel = 'slack';
+        else if (g.jid.match(/^\\d{17,}/)) channel = 'discord';
+
+        const key = channel + ':group:' + g.jid;
+        sessions[key] = {
+          displayName: g.name || g.folder,
+          migratedFrom: 'nanoclaw',
+          originalFolder: g.folder,
+          lastSeen: Date.now()
+        };
+      });
+
+      // Mesclar com existente
+      let existing = { sessions: {} };
+      if (fs.existsSync('${SESSIONS_FILE}')) {
+        try { existing = JSON.parse(fs.readFileSync('${SESSIONS_FILE}', 'utf-8')); } catch(e) {}
+      }
+      existing.sessions = { ...existing.sessions, ...sessions };
+      fs.writeFileSync('${SESSIONS_FILE}', JSON.stringify(existing, null, 2));
+      console.log('Sessoes migradas: ' + Object.keys(sessions).length);
+    });
+  " >> "${LOG_FILE}" 2>&1 && ok "Sessoes migradas para sessions.json" || warn "Falha ao migrar sessoes"
+else
+  log "Nenhum grupo registrado para migrar"
+fi
+
+# --- 4.4 Exportar estatisticas para referencia --------------------------------
+log "=== Exportando estatisticas ==="
+
+STATS_FILE="${OPENCLAW_DIR}/workspace/.migration-ref/db-stats.txt"
+echo "=== Estatisticas do banco NanoClaw (migrado em $(date)) ===" > "${STATS_FILE}"
+TABLES=$(sqlite3 "${NANO_DB}" ".tables" 2>/dev/null || echo "")
+for tbl in ${TABLES}; do
+  COUNT=$(sqlite3 "${NANO_DB}" "SELECT COUNT(*) FROM ${tbl};" 2>/dev/null || echo "?")
+  echo "${tbl}: ${COUNT} registros" >> "${STATS_FILE}"
+done
+ok "Estatisticas salvas em ${STATS_FILE}"
+
+# --- 4.5 Exportar CSVs de dados customizados ---------------------------------
+log "=== Exportando dados customizados em CSV ==="
+
+mkdir -p "${OPENCLAW_DIR}/workspace/.migration-ref/csv"
+for tbl in agent_costs pipeline_executions pipeline_stages task_run_logs; do
+  if sqlite3 "${NANO_DB}" "SELECT COUNT(*) FROM ${tbl};" &>/dev/null 2>&1; then
+    COUNT=$(sqlite3 "${NANO_DB}" "SELECT COUNT(*) FROM ${tbl};" 2>/dev/null)
+    if [[ "${COUNT}" -gt 0 ]]; then
+      sqlite3 -header -csv "${NANO_DB}" "SELECT * FROM ${tbl};" > "${OPENCLAW_DIR}/workspace/.migration-ref/csv/${tbl}.csv" 2>/dev/null
+      log "  ${tbl}: ${COUNT} registros exportados"
+    fi
   fi
 done
-
-if [[ -z "${OC_DB}" ]]; then
-  # Criar store/ e usar o banco exportado como base
-  mkdir -p "${OPENCLAW_DIR}/store"
-  OC_DB="${OPENCLAW_DIR}/store/data.db"
-  log "Banco OpenClaw nao encontrado; sera criado: ${OC_DB}"
-fi
-
-log "NanoClaw DB: ${NANO_DB}"
-log "OpenClaw DB: ${OC_DB}"
-
-# --- 4.1 Backup do banco de destino -----------------------------------------
-log "=== Backup do banco de destino ==="
-if [[ -f "${OC_DB}" ]]; then
-  cp "${OC_DB}" "${OC_DB}.bak-$(date +%Y%m%d_%H%M%S)"
-  ok "Backup criado"
-else
-  log "Banco de destino ainda nao existe; sera criado"
-fi
-
-# --- 4.2 Comparar schemas ---------------------------------------------------
-log "=== Comparando schemas ==="
-
-NANO_SCHEMA=$(sqlite3 "${NANO_DB}" ".schema" 2>/dev/null)
-OC_SCHEMA=""
-if [[ -f "${OC_DB}" ]]; then
-  OC_SCHEMA=$(sqlite3 "${OC_DB}" ".schema" 2>/dev/null || echo "")
-fi
-
-# Extrair nomes de tabelas do NanoClaw
-NANO_TABLES=$(sqlite3 "${NANO_DB}" "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;" 2>/dev/null)
-OC_TABLES=""
-if [[ -f "${OC_DB}" ]]; then
-  OC_TABLES=$(sqlite3 "${OC_DB}" "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;" 2>/dev/null || echo "")
-fi
-
-log "Tabelas NanoClaw: ${NANO_TABLES}"
-log "Tabelas OpenClaw: ${OC_TABLES}"
-
-# --- 4.3 Criar tabelas faltantes --------------------------------------------
-log "=== Criando tabelas faltantes ==="
-
-# Tabelas que precisam existir no OpenClaw
-MIGRATION_SQL=$(cat <<'EOSQL'
--- Tabelas de dados operacionais (criar se nao existem)
-
-CREATE TABLE IF NOT EXISTS chats (
-  jid TEXT PRIMARY KEY,
-  name TEXT,
-  last_message_time INTEGER,
-  channel TEXT DEFAULT 'whatsapp',
-  is_group INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS messages (
-  id TEXT PRIMARY KEY,
-  chat_jid TEXT NOT NULL,
-  sender TEXT,
-  content TEXT,
-  timestamp INTEGER NOT NULL,
-  is_from_me INTEGER DEFAULT 0,
-  is_bot_message INTEGER DEFAULT 0,
-  FOREIGN KEY (chat_jid) REFERENCES chats(jid)
-);
-
-CREATE TABLE IF NOT EXISTS registered_groups (
-  jid TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  folder TEXT NOT NULL,
-  trigger_pattern TEXT,
-  added_at TEXT DEFAULT (datetime('now')),
-  containerConfig TEXT DEFAULT '{}',
-  requiresTrigger INTEGER DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS scheduled_tasks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  group_folder TEXT NOT NULL,
-  chat_jid TEXT,
-  prompt TEXT,
-  script TEXT,
-  schedule_type TEXT NOT NULL CHECK(schedule_type IN ('cron','interval','once')),
-  schedule_value TEXT NOT NULL,
-  next_run INTEGER,
-  status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','completed')),
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS task_run_logs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  task_id INTEGER NOT NULL,
-  run_at TEXT DEFAULT (datetime('now')),
-  duration_ms INTEGER,
-  status TEXT,
-  result TEXT,
-  error TEXT,
-  FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)
-);
-
-CREATE TABLE IF NOT EXISTS router_state (
-  key TEXT PRIMARY KEY,
-  value TEXT
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  group_folder TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL
-);
-
--- Tabelas customizadas (offices system)
-
-CREATE TABLE IF NOT EXISTS agent_costs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  office TEXT,
-  agent_name TEXT,
-  group_folder TEXT,
-  date TEXT NOT NULL,
-  tokens_in INTEGER DEFAULT 0,
-  tokens_out INTEGER DEFAULT 0,
-  cache_creation_tokens INTEGER DEFAULT 0,
-  cache_read_tokens INTEGER DEFAULT 0,
-  cost_brl REAL DEFAULT 0.0,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS pipeline_executions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  office TEXT NOT NULL,
-  group_folder TEXT,
-  status TEXT DEFAULT 'running',
-  current_stage INTEGER DEFAULT 0,
-  total_stages INTEGER DEFAULT 0,
-  started_at TEXT DEFAULT (datetime('now')),
-  completed_at TEXT,
-  error TEXT
-);
-
-CREATE TABLE IF NOT EXISTS pipeline_stages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  execution_id INTEGER NOT NULL,
-  position INTEGER NOT NULL,
-  agent_name TEXT NOT NULL,
-  status TEXT DEFAULT 'pending',
-  output TEXT,
-  score REAL,
-  duration_ms INTEGER,
-  started_at TEXT,
-  completed_at TEXT,
-  FOREIGN KEY (execution_id) REFERENCES pipeline_executions(id)
-);
-
--- Indices de performance
-CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
-CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_jid);
-CREATE INDEX IF NOT EXISTS idx_tasks_next_run ON scheduled_tasks(next_run);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON scheduled_tasks(status);
-CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_run_logs(task_id);
-CREATE INDEX IF NOT EXISTS idx_agent_costs_date ON agent_costs(date);
-CREATE INDEX IF NOT EXISTS idx_agent_costs_office ON agent_costs(office);
-CREATE INDEX IF NOT EXISTS idx_pipeline_status ON pipeline_executions(status);
-EOSQL
-)
-
-sqlite3 "${OC_DB}" "${MIGRATION_SQL}" >> "${LOG_FILE}" 2>&1
-ok "Schema atualizado"
-
-# --- 4.4 Migrar dados -------------------------------------------------------
-log "=== Migrando dados ==="
-
-# Tabelas a migrar (exceto router_state e sessions que sao regenerados)
-MIGRATE_TABLES="chats messages registered_groups scheduled_tasks task_run_logs agent_costs pipeline_executions pipeline_stages"
-
-for tbl in ${MIGRATE_TABLES}; do
-  NANO_COUNT=$(sqlite3 "${NANO_DB}" "SELECT COUNT(*) FROM ${tbl};" 2>/dev/null || echo "0")
-
-  if [[ "${NANO_COUNT}" -eq 0 ]]; then
-    log "Tabela ${tbl}: vazia, pulando"
-    continue
-  fi
-
-  # Exportar como INSERT statements
-  sqlite3 "${NANO_DB}" ".mode insert ${tbl}" ".output /tmp/migrate_${tbl}.sql" "SELECT * FROM ${tbl};" 2>/dev/null
-
-  if [[ -f "/tmp/migrate_${tbl}.sql" ]] && [[ -s "/tmp/migrate_${tbl}.sql" ]]; then
-    # Usar INSERT OR IGNORE para evitar conflitos de chave
-    sed -i 's/INSERT INTO/INSERT OR IGNORE INTO/g' "/tmp/migrate_${tbl}.sql"
-
-    sqlite3 "${OC_DB}" < "/tmp/migrate_${tbl}.sql" >> "${LOG_FILE}" 2>&1 || warn "Alguns registros de ${tbl} nao puderam ser importados"
-
-    OC_COUNT=$(sqlite3 "${OC_DB}" "SELECT COUNT(*) FROM ${tbl};" 2>/dev/null || echo "?")
-    ok "Tabela ${tbl}: ${NANO_COUNT} registros (destino agora tem: ${OC_COUNT})"
-  fi
-
-  rm -f "/tmp/migrate_${tbl}.sql"
-done
-
-# --- 4.5 Validar integridade ------------------------------------------------
-log "=== Validando integridade ==="
-
-INTEGRITY=$(sqlite3 "${OC_DB}" "PRAGMA integrity_check;" 2>/dev/null)
-if [[ "${INTEGRITY}" == "ok" ]]; then
-  ok "Integridade do banco OK"
-else
-  warn "Problemas de integridade: ${INTEGRITY}"
-fi
-
-# Verificar foreign keys
-FK_CHECK=$(sqlite3 "${OC_DB}" "PRAGMA foreign_key_check;" 2>/dev/null || echo "")
-if [[ -z "${FK_CHECK}" ]]; then
-  ok "Foreign keys OK"
-else
-  warn "Problemas de foreign key: ${FK_CHECK}"
-fi
-
-# --- 4.6 Estatisticas finais ------------------------------------------------
-log "=== Estatisticas finais ==="
-echo "" >> "${LOG_FILE}"
-echo "=== Estado final do banco ===" >> "${LOG_FILE}"
-for tbl in ${MIGRATE_TABLES}; do
-  COUNT=$(sqlite3 "${OC_DB}" "SELECT COUNT(*) FROM ${tbl};" 2>/dev/null || echo "?")
-  log "  ${tbl}: ${COUNT} registros"
-done
+ok "CSVs exportados"
 
 echo ""
 echo "============================================================"
-echo -e "${GREEN}  MIGRACAO DO BANCO CONCLUIDA${NC}"
-echo "  Banco de destino: ${OC_DB}"
+echo -e "${GREEN}  MIGRACAO DE DADOS CONCLUIDA${NC}"
+echo "  Tarefas: cron/jobs.json"
+echo "  Sessoes: agents/main/sessions/sessions.json"
+echo "  Referencia: workspace/.migration-ref/"
 echo "============================================================"
 log "Fim: $(date)"
