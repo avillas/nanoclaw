@@ -71,8 +71,8 @@ RATE LIMITS:
 
 ## Cost controls
 
-- Daily budget: R$ 15.00
-- Monthly budget: R$ 100.00
+- Daily budget: R$ 50.00
+- Monthly budget: R$ 1000.00
 - Alert at 75% of daily budget via Telegram
 - Action on budget exceeded: downgrade all agents to Haiku
 

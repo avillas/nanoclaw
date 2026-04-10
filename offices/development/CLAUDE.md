@@ -70,8 +70,8 @@ RATE LIMITS:
 
 ## Cost controls
 
-- Daily budget: R$ 15.00
-- Monthly budget: R$ 200.00
+- Daily budget: R$ 50.00
+- Monthly budget: R$ 2000.00
 - Alert at 75% of daily budget via Telegram
 
 ## Bitbucket integration

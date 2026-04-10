@@ -184,10 +184,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
           }
         }
       } catch (err) {
-        logger.error(
-          { err, sourceGroup },
-          'Error reading IPC costs directory',
-        );
+        logger.error({ err, sourceGroup }, 'Error reading IPC costs directory');
       }
 
       // Process pipeline progress from this group's IPC directory

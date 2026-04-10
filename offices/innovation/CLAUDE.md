@@ -68,7 +68,7 @@ RATE LIMITS:
 
 ## Cost controls
 
-- Daily budget: R$ 10.00
+- Daily budget: R$ 50.00
 - Monthly budget: R$ 100.00
 - Alert at 75% of daily budget via Telegram
 
