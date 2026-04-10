@@ -43,9 +43,24 @@ echo ""
 log "Inicio: $(date)"
 
 # --- Localizar banco NanoClaw ------------------------------------------------
-NANO_DB="${EXPORT_DIR}/database/nanoclaw.db"
-if [[ ! -f "${NANO_DB}" ]]; then
-  warn "Banco NanoClaw nao encontrado em ${NANO_DB}"
+NANO_DB=""
+for candidate in \
+  "${EXPORT_DIR}/database/nanoclaw.db" \
+  "${EXPORT_DIR}/database/messages.db" \
+  "${EXPORT_DIR}/database/data.db"; do
+  if [[ -f "${candidate}" ]]; then
+    NANO_DB="${candidate}"
+    break
+  fi
+done
+
+# Fallback: procurar qualquer .db no diretorio de exportacao
+if [[ -z "${NANO_DB}" ]]; then
+  NANO_DB=$(find "${EXPORT_DIR}/database" -name "*.db" -type f 2>/dev/null | head -1 || echo "")
+fi
+
+if [[ -z "${NANO_DB}" ]]; then
+  warn "Banco NanoClaw nao encontrado em ${EXPORT_DIR}/database/"
   warn "Pulando migracao de dados"
   exit 0
 fi

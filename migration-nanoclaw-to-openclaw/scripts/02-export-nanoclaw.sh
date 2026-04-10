@@ -35,7 +35,7 @@ log "=== Exportando banco de dados ==="
 mkdir -p "${EXPORT_DIR}/database"
 
 DB_PATH=""
-for candidate in "${NANOCLAW_DIR}/store/nanoclaw.db" "${NANOCLAW_DIR}/store/data.db"; do
+for candidate in "${NANOCLAW_DIR}/store/messages.db" "${NANOCLAW_DIR}/store/nanoclaw.db" "${NANOCLAW_DIR}/store/data.db"; do
   if [[ -f "${candidate}" ]]; then
     DB_PATH="${candidate}"
     break
