@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/header';
 import { CreateAgentModal } from '@/components/modals/create-agent-modal';
 import { DeleteAgentModal } from '@/components/modals/delete-agent-modal';
 import { EditAgentModal } from '@/components/modals/edit-agent-modal';
+import { EditOfficeModal } from '@/components/modals/edit-office-modal';
 import { TelegramConfigModal } from '@/components/modals/telegram-config-modal';
 import {
   Users, CheckCircle, Clock, XCircle, AlertTriangle,
@@ -58,6 +59,7 @@ export default function OfficeDetailPage() {
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
   const [editTarget, setEditTarget] = useState<Agent | null>(null);
   const [showTelegramConfig, setShowTelegramConfig] = useState(false);
+  const [showEditOffice, setShowEditOffice] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
 
@@ -202,6 +204,15 @@ export default function OfficeDetailPage() {
                 <span className="text-xs text-text-muted w-full sm:w-auto">{rebuildMsg}</span>
               )}
               <button
+                onClick={() => setShowEditOffice(true)}
+                title="Editar dados, CLAUDE.md e SOUL.md do escritorio"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-2 text-text-secondary hover:bg-surface-3 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Editar Escritorio</span>
+                <span className="sm:hidden">Editar</span>
+              </button>
+              <button
                 onClick={handleRebuild}
                 disabled={rebuilding}
                 title="Regenera as seções ## Team e ## Pipeline do CLAUDE.md a partir dos arquivos em agents/"
@@ -317,6 +328,13 @@ export default function OfficeDetailPage() {
         agent={editTarget}
         open={!!editTarget}
         onClose={() => setEditTarget(null)}
+        onSaved={loadData}
+      />
+
+      <EditOfficeModal
+        office={office}
+        open={showEditOffice}
+        onClose={() => setShowEditOffice(false)}
         onSaved={loadData}
       />
 

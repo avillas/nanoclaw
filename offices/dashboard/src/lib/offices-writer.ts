@@ -640,6 +640,152 @@ ${input.soul.estiloDeEntrega}
 }
 
 // ---------------------------------------------------------------------------
+// Office read (raw file content for edit modal)
+// ---------------------------------------------------------------------------
+
+export function getOfficeRawContent(
+  office: string,
+): {
+  success: boolean;
+  claudeMd?: string;
+  soulMd?: string;
+  metadata?: {
+    displayName: string;
+    mission: string;
+    dailyBudget: string;
+    monthlyBudget: string;
+  };
+  error?: string;
+} {
+  const officeDir = path.join(getOfficesRoot(), office);
+  const claudePath = path.join(officeDir, 'CLAUDE.md');
+
+  if (!fs.existsSync(claudePath)) {
+    return { success: false, error: `Office "${office}" not found` };
+  }
+
+  const claudeMd = fs.readFileSync(claudePath, 'utf-8');
+  const soulPath = path.join(officeDir, 'SOUL.md');
+  const soulMd = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : '';
+
+  // Extract metadata from CLAUDE.md
+  const h1Match = claudeMd.match(/^#\s+(.+)$/m);
+  const displayName = h1Match ? h1Match[1].trim() : office;
+
+  const missionMatch = claudeMd.match(/focused on (.+?)[\.\n]/i)
+    || claudeMd.match(/responsible for (.+?)[\.\n]/i);
+  const mission = missionMatch ? missionMatch[1].trim() : '';
+
+  const dailyBudgetMatch = claudeMd.match(/Daily budget[:\s]*R?\$?\s*([\d,.]+)/i);
+  const monthlyBudgetMatch = claudeMd.match(/Monthly budget[:\s]*R?\$?\s*([\d,.]+)/i);
+  const dailyBudget = dailyBudgetMatch ? dailyBudgetMatch[1] : '0';
+  const monthlyBudget = monthlyBudgetMatch ? monthlyBudgetMatch[1] : '0';
+
+  return {
+    success: true,
+    claudeMd,
+    soulMd,
+    metadata: { displayName, mission, dailyBudget, monthlyBudget },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Office update
+// ---------------------------------------------------------------------------
+
+export interface UpdateOfficeMetadata {
+  displayName?: string;
+  mission?: string;
+  dailyBudget?: string;
+  monthlyBudget?: string;
+}
+
+export type UpdateOfficeInput =
+  | { mode: 'metadata'; metadata: UpdateOfficeMetadata }
+  | { mode: 'claudemd'; rawMarkdown: string }
+  | { mode: 'soul'; rawMarkdown: string };
+
+export function updateOffice(
+  office: string,
+  input: UpdateOfficeInput,
+): { success: boolean; error?: string } {
+  const officeDir = path.join(getOfficesRoot(), office);
+  const claudePath = path.join(officeDir, 'CLAUDE.md');
+
+  if (!fs.existsSync(claudePath)) {
+    return { success: false, error: `Office "${office}" not found` };
+  }
+
+  if (input.mode === 'soul') {
+    if (typeof input.rawMarkdown !== 'string' || input.rawMarkdown.trim().length === 0) {
+      return { success: false, error: 'SOUL.md content must be non-empty' };
+    }
+    const soulPath = path.join(officeDir, 'SOUL.md');
+    fs.writeFileSync(soulPath, input.rawMarkdown, 'utf-8');
+    recompileGroupIfExists(office);
+    invalidateCache();
+    return { success: true };
+  }
+
+  if (input.mode === 'claudemd') {
+    if (typeof input.rawMarkdown !== 'string' || input.rawMarkdown.trim().length === 0) {
+      return { success: false, error: 'CLAUDE.md content must be non-empty' };
+    }
+    fs.writeFileSync(claudePath, input.rawMarkdown, 'utf-8');
+    // Regenerate Team/Pipeline markers in case user removed them
+    regenerateOfficeClaudeMd(office);
+    invalidateCache();
+    return { success: true };
+  }
+
+  // mode === 'metadata'
+  let content = fs.readFileSync(claudePath, 'utf-8');
+  const m = input.metadata || {};
+
+  if (m.displayName !== undefined && m.displayName.trim().length > 0) {
+    const newName = m.displayName.trim();
+    if (/^#\s+.+/m.test(content)) {
+      content = content.replace(/^#\s+.+/m, `# ${newName}`);
+    } else {
+      content = `# ${newName}\n\n${content}`;
+    }
+    // Also update the first paragraph that says "You are the X —"
+    content = content.replace(
+      /You are the .+? —/,
+      `You are the ${newName} —`,
+    );
+  }
+
+  if (m.mission !== undefined && m.mission.trim().length > 0) {
+    const newMission = m.mission.trim();
+    // Replace "focused on ..." up to the period in the first paragraph
+    content = content.replace(
+      /focused on .+?\./i,
+      `focused on ${newMission}.`,
+    );
+  }
+
+  if (m.dailyBudget !== undefined) {
+    content = content.replace(
+      /Daily budget[:\s]*R?\$?\s*[\d,.]+/i,
+      `Daily budget: R$ ${m.dailyBudget}`,
+    );
+  }
+
+  if (m.monthlyBudget !== undefined) {
+    content = content.replace(
+      /Monthly budget[:\s]*R?\$?\s*[\d,.]+/i,
+      `Monthly budget: R$ ${m.monthlyBudget}`,
+    );
+  }
+
+  fs.writeFileSync(claudePath, content, 'utf-8');
+  regenerateOfficeClaudeMd(office);
+  invalidateCache();
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
 
