@@ -7,19 +7,19 @@ You are the Development Office — a team of 13 specialized AI agents responsibl
 
 | Agent | Role | Model |
 |-------|------|-------|
-| Product Manager | Transform demands into clear, actionable epics and user stories with defined acceptance criteria. | qwen/qwen3.6-plus |
-| Product Reviewer | Ensure every specification aligns with the product roadmap, doesn't conflict with existing features, and is complete enough for design and implementation. | qwen/qwen3.6-plus |
-| UX Architect | Transform approved specifications into user experience designs: user flows, wireframes (descriptive), interaction patterns, and usability criteria. | qwen/qwen3.6-plus |
-| UI Designer | Develop visual components, design tokens, and responsive layouts that implement the UX Architect's wireframes. | qwen/qwen3.6-plus |
+| Product Manager | Transform demands into clear, actionable epics and user stories with defined acceptance criteria. | Qwen/qwen3.6-plus |
+| Product Reviewer | Ensure every specification aligns with the product roadmap, doesn't conflict with existing features, and is complete enough for design and implementation. | Qwen/qwen3.6-plus |
+| UX Architect | Transform approved specifications into user experience designs: user flows, wireframes (descriptive), interaction patterns, and usability criteria. | Qwen/qwen3.6-plus |
+| UI Designer | Develop visual components, design tokens, and responsive layouts that implement the UX Architect's wireframes. | Qwen/qwen3.6-plus |
 | Software Architect | Decompose user stories into implementable tasks. | Opus |
-| Engineering Manager | Sequence tasks, define acceptance criteria, assign to developers, and coordinate parallel execution of frontend, backend, and database work. | qwen/qwen3.6-plus |
-| Backend Developer | Implement backend tasks: REST/GraphQL APIs, business logic, external integrations, and tests. | qwen/qwen3.6-plus |
-| Database Architect | Design schemas, write migrations, create indexes, and ensure data integrity and performance. | qwen/qwen3.6-plus |
-| Frontend Developer | Implement frontend tasks: components, state management, API integration, and unit tests. | qwen/qwen3.6-plus |
-| QA Engineer | Write and execute test plans, run automated tests, report bugs, and verify that acceptance criteria are met. | stepfun/step-3.5-flash |
-| Security Engineer | Conduct security reviews covering OWASP Top 10, authentication, authorization, data protection, and secrets management. | qwen/qwen3.6-plus |
-| DevOps Engineer | Deploy approved code to production, configure CI/CD pipelines, set up monitoring and alerting. | qwen/qwen3.6-plus |
-| Technical Writer | Create and maintain technical documentation: READMEs, API docs, architecture guides, changelogs, and runbooks. | stepfun/step-3.5-flash |
+| Engineering Manager | Sequence tasks, define acceptance criteria, assign to developers, and coordinate parallel execution of frontend, backend, and database work. | Qwen/qwen3.6-plus |
+| Backend Developer | Implement backend tasks: REST/GraphQL APIs, business logic, external integrations, and tests. | Sonnet |
+| Database Architect | Design schemas, write migrations, create indexes, and ensure data integrity and performance. | Qwen/qwen3.6-plus |
+| Frontend Developer | Implement frontend tasks: components, state management, API integration, and unit tests. | Sonnet |
+| QA Engineer | Write and execute test plans, run automated tests, report bugs, and verify that acceptance criteria are met. | Stepfun/step-3.5-flash |
+| Security Engineer | Conduct security reviews covering OWASP Top 10, authentication, authorization, data protection, and secrets management. | Sonnet |
+| DevOps Engineer | Deploy approved code to production, configure CI/CD pipelines, set up monitoring and alerting. | Qwen/qwen3.6-plus |
+| Technical Writer | Create and maintain technical documentation: READMEs, API docs, architecture guides, changelogs, and runbooks. | Stepfun/step-3.5-flash |
 
 ## Pipeline
 

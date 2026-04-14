@@ -295,13 +295,66 @@ export function getOfficeByName(name: string): Office | undefined {
 }
 
 export function getAllAgents(): Agent[] {
-  if (isFresh(agentsCache)) return agentsCache.data;
+  // Base agent definitions (read from identity files) are cacheable — they
+  // only change when files on disk change.
+  let baseAgents: Agent[];
+  if (isFresh(agentsCache)) {
+    baseAgents = agentsCache.data;
+  } else {
+    const officeNames = discoverOfficeNames();
+    baseAgents = officeNames.flatMap((name) =>
+      readAgentsForOffice(name as OfficeName),
+    );
+    agentsCache.data = baseAgents;
+    agentsCache.timestamp = Date.now();
+  }
 
-  const officeNames = discoverOfficeNames();
-  const agents = officeNames.flatMap((name) => readAgentsForOffice(name as OfficeName));
-  agentsCache.data = agents;
-  agentsCache.timestamp = Date.now();
-  return agents;
+  // Cost/tokens data is NOT cached — it changes every time an agent runs.
+  // Query today's cost rollup and attach to each agent. Return a fresh
+  // array so we don't mutate the cached base.
+  const today = new Date().toISOString().slice(0, 10);
+  const agentCosts = getAgentCostsToday(today);
+
+  return baseAgents.map((agent) => {
+    const match = findAgentCostMatch(agentCosts, agent);
+    return match
+      ? {
+          ...agent,
+          costToday: match.total_cost ?? 0,
+          tokensUsed: match.total_tokens ?? 0,
+        }
+      : agent;
+  });
+}
+
+/**
+ * Match a cost record to an agent. Cost records use various `agent_name`
+ * formats depending on who wrote them:
+ *   - Display Name: `Competitive Intelligence Analyst`
+ *   - Slug:         `competitive-intelligence-analyst`
+ *   - Orchestrator: `development orchestrator` (not a specific agent)
+ *   - MCP proxy:    `openrouter` (also not specific)
+ *
+ * We match the first two variants (display name + slug, case-insensitive)
+ * and ignore the orchestrator/proxy generic names here — they belong to
+ * the office, not a specific agent.
+ */
+function findAgentCostMatch(
+  costs: Array<{
+    agent_name: string;
+    office: string;
+    total_cost: number;
+    total_tokens: number;
+  }>,
+  agent: Agent,
+) {
+  const nameLower = agent.name.toLowerCase();
+  const slugLower = agent.slug.toLowerCase();
+  return costs.find((c) => {
+    if (c.office !== agent.office) return false;
+    const costNameLower = c.agent_name.toLowerCase();
+    return costNameLower === nameLower || costNameLower === slugLower;
+  });
 }
 
 export function getAgentsByOffice(office: OfficeName): Agent[] {
@@ -323,25 +376,12 @@ export function getCostSummaries(): CostSummary[] {
 
 export function getDashboardKPIs(): DashboardKPIs {
   const offices = getOffices();
+  // getAllAgents() already enriches with today's cost data.
   const agents = getAllAgents();
-
-  // Enrich agents with today's cost data
-  const today = new Date().toISOString().slice(0, 10);
-  const agentCosts = getAgentCostsToday(today);
-
-  for (const agent of agents) {
-    const costData = agentCosts.find(
-      c => c.agent_name === agent.name && c.office === agent.office
-    );
-    if (costData) {
-      agent.costToday = costData.total_cost;
-      agent.tokensUsed = costData.total_tokens;
-    }
-  }
 
   return {
     totalAgents: agents.length,
-    activeAgents: agents.filter(a => a.status === 'working').length,
+    activeAgents: agents.filter((a) => a.status === 'working').length,
     runningPipelines: 0,
     completedToday: 0,
     totalCostToday: offices.reduce((sum, o) => sum + o.dailySpent, 0),

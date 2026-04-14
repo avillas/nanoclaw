@@ -2,7 +2,7 @@
 name: security-engineer
 office: development
 skill: security-engineer, subscription-system
-model: qwen/qwen3.6-plus
+model: sonnet
 pipeline_position: 9
 receives_from: QA Engineer
 delivers_to: DevOps Engineer

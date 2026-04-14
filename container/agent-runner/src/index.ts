@@ -24,6 +24,9 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 
+import { openrouterMcpServer } from './openrouter-mcp.js';
+import { ollamaMcpServer } from './ollama-mcp.js';
+
 // ESM has no __dirname — derive it once at module load so it's available
 // everywhere (mcpServers config in runQuery, mcpServerPath in main, etc.).
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -473,6 +476,9 @@ For any of the agents listed above, instead of calling \`Task\`/\`Agent\`:
      frontmatter), plus a short paragraph listing any relevant context
      (upstream artifacts, paths to read, deliverable expectations)
    - \`prompt\`: the specific task/context you want this agent to process
+   - \`agent_name\`: the agent's slug (e.g. \`innovation-reporter\`) — REQUIRED
+     so the cost of this call is attributed to the correct agent in the
+     dashboard, not to a generic "openrouter" bucket
 3. **Use the response** as if it came from \`Task\`/\`Agent\`. If you need the
    agent to apply its output (write files, update state), YOU do that with
    your own tools using the OpenRouter response as guidance.
@@ -518,6 +524,78 @@ const ORCHESTRATOR_ALLOWED_TOOLS = new Set<string>([
   'Read', // further filtered: identity file reads also become active-agent signals
   'Skill',
 ]);
+
+/**
+ * Work tools that the orchestrator gains access to when it is acting as a
+ * virtual (OpenRouter / Ollama) sub-agent — i.e. when the SDK's Agent/Task
+ * tool cannot spawn the sub-agent because its model isn't Anthropic-native.
+ *
+ * These agents execute as text generation via MCP tools (no tool-use
+ * capability of their own), so the orchestrator has to apply their output
+ * by running file/shell tools directly.
+ */
+const VIRTUAL_AGENT_WORK_TOOLS = new Set<string>([
+  'Bash',
+  'Write',
+  'Edit',
+  'Glob',
+  'Grep',
+  'NotebookEdit',
+  'WebFetch',
+  'WebSearch',
+]);
+
+/**
+ * Read the frontmatter `model` field of every agent identity file in an
+ * office. Cached at hook creation time so PreToolUse calls don't re-read
+ * the disk on every tool use.
+ */
+function loadAgentModelMap(office: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const dir = `/workspace/offices/${office}/agents`;
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
+  } catch {
+    return map;
+  }
+  for (const file of files) {
+    const slug = file.replace(/\.md$/, '');
+    const { frontmatter } = parseAgentFile(path.join(dir, file));
+    if (frontmatter.model) {
+      map.set(slug, frontmatter.model);
+    }
+  }
+  return map;
+}
+
+/**
+ * True when the model value refers to a non-Anthropic provider (contains
+ * `/` and is not `anthropic/...`). Those agents run via MCP tools, not
+ * the SDK's native Agent/Task tool.
+ */
+function isVirtualModel(model: string): boolean {
+  return model.includes('/') && !model.startsWith('anthropic/');
+}
+
+/**
+ * Read the currently active sub-agent marker and look up its model.
+ * Returns null when no marker exists, the marker points at a different
+ * office, or the slug isn't in the map.
+ */
+function readActiveAgentModel(
+  office: string,
+  agentModels: Map<string, string>,
+): string | null {
+  try {
+    const raw = fs.readFileSync('/workspace/ipc/active-agent.json', 'utf-8');
+    const data = JSON.parse(raw) as { office?: string; subagent?: string };
+    if (data.office !== office || !data.subagent) return null;
+    return agentModels.get(data.subagent) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function writeActiveAgent(
   office: string,
@@ -570,6 +648,11 @@ function writeActiveAgent(
  * groups.
  */
 function createDelegationGuardHook(office: string): HookCallback {
+  // Cache the slug→model map at hook creation to avoid re-reading identity
+  // files on every tool call.
+  const agentModels = loadAgentModelMap(office);
+  const validSlugs = [...agentModels.keys()];
+
   return async (input, _toolUseId, _context) => {
     try {
       const evt = input as {
@@ -584,8 +667,7 @@ function createDelegationGuardHook(office: string): HookCallback {
         agent_id?: string;
       };
 
-      const validSlugs = listOfficeAgentSlugs(office);
-      // Free-form office: no enforcement.
+      // Free-form office (no agent files): no enforcement.
       if (validSlugs.length === 0) return {};
 
       const tool = evt.tool_name || '';
@@ -595,6 +677,7 @@ function createDelegationGuardHook(office: string): HookCallback {
       // ----- Spawn-tool validation (applies on main thread AND inside subagents) -----
       if (tool === 'Agent' || tool === 'Task') {
         const sub = (evt.tool_input?.subagent_type || '').trim();
+
         if (!validSlugs.includes(sub)) {
           const list = validSlugs.map((s) => `- ${s}`).join('\n');
           const reason =
@@ -612,6 +695,39 @@ function createDelegationGuardHook(office: string): HookCallback {
             },
           };
         }
+
+        // Agents configured to run on OpenRouter / non-Anthropic models
+        // cannot be spawned via the SDK's Agent/Task tool. Redirect the
+        // orchestrator to the OpenRouter MCP tool and record the slug as
+        // the active agent so subsequent file writes are allowed below.
+        const subModel = agentModels.get(sub);
+        if (subModel && isVirtualModel(subModel)) {
+          writeActiveAgent(office, sub, sessionId, 'openrouter-redirect');
+          const identityPath = `/workspace/offices/${office}/agents/${sub}.md`;
+          const reason =
+            `Agent "${sub}" runs on ${subModel} (non-Anthropic). The SDK's Agent/Task tool cannot invoke it.\n\n` +
+            `Use the OpenRouter MCP tool instead:\n\n` +
+            `1. Read the identity file if you haven't: ${identityPath}\n` +
+            `2. Call mcp__openrouter__openrouter_chat with:\n` +
+            `   - model: "${subModel}"\n` +
+            `   - system: <body of the identity file, everything after the YAML frontmatter, plus any upstream context>\n` +
+            `   - prompt: <the specific task you want "${sub}" to handle>\n` +
+            `   - agent_name: "${sub}"  (for dashboard cost attribution)\n` +
+            `3. After you receive the text response, YOU save deliverables to disk using Write/Bash/Edit. ` +
+            `Those tools are unlocked for you while the active-agent marker points at "${sub}" (a virtual agent).\n\n` +
+            `Save reports to /workspace/reports/<descriptive-name>.<ext> — that's the dashboard's reports path.`;
+          log(
+            `Delegation guard: REDIRECT Agent subagent_type="${sub}" to OpenRouter (${subModel})`,
+          );
+          return {
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: reason,
+            },
+          };
+        }
+
         writeActiveAgent(office, sub, sessionId, 'agent-tool');
         log(`Delegation guard: PASS spawn subagent_type="${sub}"`);
         return {};
@@ -638,6 +754,20 @@ function createDelegationGuardHook(office: string): HookCallback {
         return {};
       }
 
+      // ----- Virtual-agent unlock: if the active-agent marker points at an
+      // OpenRouter/Ollama agent, the orchestrator is acting as that agent and
+      // needs file/shell tools to persist its output (the virtual agent has
+      // no tool-use of its own — it only generates text via MCP). -----
+      if (VIRTUAL_AGENT_WORK_TOOLS.has(tool)) {
+        const activeModel = readActiveAgentModel(office, agentModels);
+        if (activeModel && isVirtualModel(activeModel)) {
+          log(
+            `Delegation guard: PASS main-thread tool="${tool}" (acting as virtual agent, model=${activeModel})`,
+          );
+          return {};
+        }
+      }
+
       // ----- Everything else on main thread is blocked -----
       const list = validSlugs.map((s) => `- ${s}`).join('\n');
       const reason =
@@ -646,8 +776,10 @@ function createDelegationGuardHook(office: string): HookCallback {
         `Required protocol:\n` +
         `1. Read the identity file: /workspace/offices/${office}/agents/<slug>.md\n` +
         `2. Invoke the Agent tool with subagent_type=<slug> (one of:\n${list}\n).\n` +
+        `   If the agent's model is non-Anthropic (e.g. qwen/..., stepfun/..., openai/...) the ` +
+        `   guard will redirect you to mcp__openrouter__openrouter_chat — follow those instructions.\n` +
         `3. Pass the work instructions in the prompt field. The sub-agent will run ${tool} for you.\n\n` +
-        `Allowed orchestrator tools: Agent, Read, TodoWrite, ToolSearch, SendMessage, Skill, mcp__nanoclaw__*.`;
+        `Allowed orchestrator tools: Agent, Read, TodoWrite, ToolSearch, SendMessage, Skill, mcp__*.`;
       log(`Delegation guard: BLOCK main-thread tool="${tool}"`);
       return {
         hookSpecificOutput: {
@@ -1152,36 +1284,13 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
-        // OpenRouter multi-model access — only enabled when API key is present
+        // OpenRouter multi-model access — in-process MCP server. Zero
+        // subprocess spawn, zero stdio JSON-RPC overhead per call.
         ...(process.env.OPENROUTER_API_KEY
-          ? {
-              openrouter: {
-                command: 'node',
-                args: [path.join(__dirname, 'openrouter-mcp.js')],
-                env: {
-                  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-                  OPENROUTER_DEFAULT_MODEL:
-                    process.env.OPENROUTER_DEFAULT_MODEL || '',
-                  OPENROUTER_BASE_URL:
-                    process.env.OPENROUTER_BASE_URL || '',
-                  NANOCLAW_OFFICE: process.env.NANOCLAW_OFFICE || '',
-                },
-              },
-            }
+          ? { openrouter: openrouterMcpServer }
           : {}),
-        // Ollama local-model access — only enabled when OLLAMA_HOST is set
-        ...(process.env.OLLAMA_HOST
-          ? {
-              ollama: {
-                command: 'node',
-                args: [path.join(__dirname, 'ollama-mcp-stdio.js')],
-                env: {
-                  OLLAMA_HOST: process.env.OLLAMA_HOST,
-                  OLLAMA_ADMIN_TOOLS: process.env.OLLAMA_ADMIN_TOOLS || '',
-                },
-              },
-            }
-          : {}),
+        // Ollama local-model access — in-process MCP server.
+        ...(process.env.OLLAMA_HOST ? { ollama: ollamaMcpServer } : {}),
       },
       hooks: {
         PreCompact: [
