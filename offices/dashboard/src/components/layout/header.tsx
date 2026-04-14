@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { Bell, Search, Menu } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { useSidebar } from './sidebar-context';
 
 interface HeaderProps {
@@ -34,21 +34,6 @@ export function Header({ title, description }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {/* Search — hidden on smallest screens */}
-          <button className="hidden sm:flex items-center gap-2 px-3 py-2 bg-surface-2 border border-border rounded-lg text-xs text-text-muted hover:border-border-hover transition-colors">
-            <Search className="w-3.5 h-3.5" />
-            <span>Search...</span>
-            <kbd className="inline-flex items-center px-1.5 py-0.5 bg-surface-0 rounded text-[10px] font-mono border border-border ml-4">
-              ⌘K
-            </kbd>
-          </button>
-
-          {/* Notifications */}
-          <button className="relative p-2 rounded-lg hover:bg-surface-2 transition-colors">
-            <Bell className="w-4 h-4 text-text-muted" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full" />
-          </button>
-
           {/* User */}
           <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-border">
             <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center text-xs font-bold text-accent flex-shrink-0">

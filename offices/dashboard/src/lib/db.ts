@@ -2,20 +2,69 @@ import Database from 'better-sqlite3';
 import path from 'path';
 
 let db: Database.Database | null = null;
+let writableDb: Database.Database | null = null;
+
+function resolveDbPath(): string {
+  return (
+    process.env.NANOCLAW_DB_PATH ||
+    path.resolve(process.cwd(), '..', 'store', 'messages.db')
+  );
+}
 
 export function getDb(): Database.Database | null {
   if (db) return db;
 
-  const dbPath = process.env.NANOCLAW_DB_PATH || path.resolve(process.cwd(), '..', 'store', 'messages.db');
-
   try {
-    db = new Database(dbPath, { readonly: true });
+    db = new Database(resolveDbPath(), { readonly: true });
     db.pragma('journal_mode = WAL');
     return db;
   } catch {
-    console.warn(`[NanoClaw DB] Could not open database at ${dbPath}. Using mock data.`);
+    console.warn(
+      `[NanoClaw DB] Could not open database at ${resolveDbPath()}. Using mock data.`,
+    );
     return null;
   }
+}
+
+/**
+ * Read/write handle for dashboard-owned tables (currently: `users`).
+ *
+ * The host process (src/db.ts) owns the core NanoClaw schema and opens the
+ * same file in read/write mode; SQLite's WAL journal (enabled on first open)
+ * makes concurrent reads and writes safe across processes.
+ *
+ * We create our own tables here with `IF NOT EXISTS` so the dashboard can
+ * initialize them on first startup without touching the host's schema.
+ */
+export function getWritableDb(): Database.Database | null {
+  if (writableDb) return writableDb;
+
+  try {
+    writableDb = new Database(resolveDbPath());
+    writableDb.pragma('journal_mode = WAL');
+    ensureDashboardSchema(writableDb);
+    return writableDb;
+  } catch (err) {
+    console.warn(
+      `[NanoClaw DB] Could not open writable database: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+function ensureDashboardSchema(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_login_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+  `);
 }
 
 export function getMessages(limit = 50): any[] {

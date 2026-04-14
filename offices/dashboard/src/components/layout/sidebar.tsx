@@ -6,7 +6,7 @@ import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard, Building2, Bot, GitBranch, Activity,
   DollarSign, LogOut, Cpu, ChevronRight, Container, Apple, Send,
-  Monitor, Sun, Moon, X, Sparkles, FileDown,
+  Monitor, Sun, Moon, X, Sparkles, FileDown, Users,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/cn';
@@ -25,6 +25,7 @@ const navItems = [
   { href: '/activity', label: 'Activity', icon: Activity },
   { href: '/costs', label: 'Costs', icon: DollarSign },
   { href: '/telegram', label: 'Telegram', icon: Send },
+  { href: '/users', label: 'Users', icon: Users },
 ];
 
 const KNOWN_OFFICE_COLORS: Record<string, string> = {
