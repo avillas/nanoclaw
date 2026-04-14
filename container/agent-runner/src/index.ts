@@ -24,6 +24,10 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 
+// ESM has no __dirname — derive it once at module load so it's available
+// everywhere (mcpServers config in runQuery, mcpServerPath in main, etc.).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -173,7 +177,7 @@ function deriveOfficeFromGroupFolder(folder: string): string {
 /**
  * Write a cost record to /workspace/ipc/costs/ in the format the host
  * orchestrator (src/ipc.ts processCostFile) expects. The host watcher picks
- * up the file, computes BRL cost from the model+token data and inserts a row
+ * up the file, computes USD cost from the model+token data and inserts a row
  * into the agent_costs table.
  *
  * Until now this was only ever called by the `report_token_usage` MCP tool —
@@ -341,22 +345,47 @@ suggests writing to /workspace/group/.
 `;
 
 /**
- * Load every sub-agent identity file from `/workspace/offices/<office>/agents/`
- * and translate it into the `AgentDefinition` shape the Claude Agent SDK
- * expects, so the orchestrator can spawn them via the `Agent` tool with the
- * agent's slug as `subagent_type`.
- *
- * The SDK does NOT auto-discover agents from `~/.claude/agents/`; they must
- * be passed explicitly via the `agents` option of `query()`.
- *
- * The body of each identity file is appended with SUBAGENT_OUTPUT_CONVENTION
- * so every sub-agent learns where to save deliverables, regardless of what
- * its identity file says.
+ * Check whether a model value is an OpenRouter model ID (contains `/`
+ * and is not a known Anthropic shorthand).
  */
-function loadOfficeAgents(
-  office: string,
-): Record<string, { description: string; prompt: string; model?: string }> {
-  const result: Record<string, { description: string; prompt: string; model?: string }> = {};
+function isOpenRouterModel(model: string): boolean {
+  return model.includes('/') && !model.startsWith('anthropic/');
+}
+
+export interface VirtualAgent {
+  slug: string;
+  model: string;
+  description: string;
+  identityPath: string;
+}
+
+export interface LoadedOfficeAgents {
+  /** Real SDK sub-agents (Anthropic-native models). Passed to `options.agents`. */
+  sdkAgents: Record<string, { description: string; prompt: string; model?: string }>;
+  /** Agents that run on OpenRouter. NOT registered with the SDK — the
+   *  orchestrator invokes them directly via `mcp__openrouter__openrouter_chat`. */
+  openrouterAgents: VirtualAgent[];
+}
+
+/**
+ * Load every sub-agent identity file from `/workspace/offices/<office>/agents/`.
+ *
+ * Anthropic-native agents (`model: sonnet`/`haiku`/`opus` or absent) are
+ * translated into the `AgentDefinition` shape the Claude Agent SDK expects.
+ *
+ * OpenRouter agents (model contains `/`) are NOT registered with the SDK —
+ * the SDK only supports Anthropic models, and a Claude-Haiku-based proxy is
+ * unreliable (Haiku tends to ignore "please delegate" instructions and do the
+ * work itself, which is exactly what we're trying to avoid). Instead, these
+ * agents are exposed to the orchestrator via a system-prompt block that tells
+ * it to call `mcp__openrouter__openrouter_chat` with the agent identity as
+ * the system prompt and the task as the user prompt.
+ */
+function loadOfficeAgents(office: string): LoadedOfficeAgents {
+  const result: LoadedOfficeAgents = {
+    sdkAgents: {},
+    openrouterAgents: [],
+  };
   const dir = `/workspace/offices/${office}/agents`;
   let files: string[] = [];
   try {
@@ -366,21 +395,109 @@ function loadOfficeAgents(
   }
   for (const file of files) {
     const slug = file.replace(/\.md$/, '');
-    const { frontmatter, body } = parseAgentFile(path.join(dir, file));
+    const identityPath = path.join(dir, file);
+    const { frontmatter, body } = parseAgentFile(identityPath);
     if (!body) continue;
     const description =
       frontmatter.description ||
       `${slug.replace(/-/g, ' ')} agent of the ${office} office. See identity file for full role.`;
-    const def: { description: string; prompt: string; model?: string } = {
-      description,
-      prompt: body + SUBAGENT_OUTPUT_CONVENTION,
-    };
-    if (frontmatter.model && frontmatter.model !== 'inherit') {
-      def.model = frontmatter.model;
+
+    const model = frontmatter.model && frontmatter.model !== 'inherit'
+      ? frontmatter.model
+      : undefined;
+
+    if (model && isOpenRouterModel(model)) {
+      // OpenRouter agent — not registered with SDK; invoked via MCP tool
+      result.openrouterAgents.push({
+        slug,
+        model,
+        description,
+        identityPath,
+      });
+      log(`Agent ${slug}: OpenRouter (${model}) — invoked via mcp__openrouter__openrouter_chat`);
+    } else {
+      // Anthropic-native sub-agent
+      const def: { description: string; prompt: string; model?: string } = {
+        description,
+        prompt: body + SUBAGENT_OUTPUT_CONVENTION,
+      };
+      if (model) def.model = model;
+      result.sdkAgents[slug] = def;
     }
-    result[slug] = def;
   }
   return result;
+}
+
+/**
+ * Build a system-prompt block describing OpenRouter agents and how to invoke
+ * them. Appended to the orchestrator's system prompt so it knows these
+ * agents exist and how to reach them.
+ *
+ * Keeping the instructions explicit and exemplary matters — we need the
+ * orchestrator (Sonnet/Opus) to reliably pick `mcp__openrouter__openrouter_chat`
+ * over `Task`/`Agent` for these specific slugs.
+ */
+function buildOpenRouterAgentsBlock(
+  openrouterAgents: VirtualAgent[],
+  office: string,
+): string {
+  if (openrouterAgents.length === 0) return '';
+
+  const lines = openrouterAgents
+    .map(
+      (a) =>
+        `- **${a.slug}** (model: \`${a.model}\`) — ${a.description}\n  Identity file: \`${a.identityPath}\``,
+    )
+    .join('\n');
+
+  return `
+
+## OpenRouter Agents (CRITICAL — read carefully)
+
+The following agents in the **${office}** office run on **OpenRouter models**,
+not Anthropic. The SDK's \`Task\` / \`Agent\` tool **cannot** invoke them — it
+only supports Anthropic models. You MUST use \`mcp__openrouter__openrouter_chat\`
+for these agents:
+
+${lines}
+
+### Invocation protocol (use this EXACTLY)
+
+For any of the agents listed above, instead of calling \`Task\`/\`Agent\`:
+
+1. **Read the identity file** with the \`Read\` tool to get the agent's full
+   role definition (mission, operating rules, deliverables).
+2. **Call \`mcp__openrouter__openrouter_chat\`** with:
+   - \`model\`: the exact model ID shown above (e.g. \`qwen/qwen3.6-plus\`)
+   - \`system\`: the body of the identity file (everything after the YAML
+     frontmatter), plus a short paragraph listing any relevant context
+     (upstream artifacts, paths to read, deliverable expectations)
+   - \`prompt\`: the specific task/context you want this agent to process
+3. **Use the response** as if it came from \`Task\`/\`Agent\`. If you need the
+   agent to apply its output (write files, update state), YOU do that with
+   your own tools using the OpenRouter response as guidance.
+4. **Save deliverables** to \`/workspace/reports/<descriptive-name>.<ext>\`
+   yourself based on the OpenRouter response — the virtual agent cannot
+   call tools; it only generates text.
+
+### Why this matters
+
+- Anthropic credits are billed separately from OpenRouter credits. Using
+  \`Task\`/\`Agent\` for these slugs wastes Anthropic tokens AND fails to
+  actually run the configured model.
+- The office's pipeline expectations (who delegates to whom) still apply —
+  just substitute \`Task/Agent\` with the OpenRouter protocol above for the
+  slugs listed.
+- The pipeline tracker hook observes the Read of the identity file and
+  records an active-agent signal, so the dashboard still shows who is
+  "working" even though the execution is on OpenRouter.
+
+### Agents NOT in the list above
+
+Agents that do not appear in this list (e.g. \`software-architect\` on Opus)
+run on Anthropic natively and can still be invoked via \`Task\`/\`Agent\` with
+their slug as the \`subagent_type\`.
+`;
 }
 
 /**
@@ -962,14 +1079,26 @@ async function runQuery(
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
 
-  // Load per-office sub-agent definitions so the orchestrator can delegate
-  // via the Agent tool using the agent's kebab-case slug.
-  const officeAgents = loadOfficeAgents(
-    deriveOfficeFromGroupFolder(containerInput.groupFolder),
-  );
+  // Load per-office sub-agent definitions. Split into:
+  //   - sdkAgents: Anthropic-native, invoked via Task/Agent tool
+  //   - openrouterAgents: exposed to orchestrator via system-prompt block,
+  //     invoked via mcp__openrouter__openrouter_chat (NOT via SDK)
+  const office = deriveOfficeFromGroupFolder(containerInput.groupFolder);
+  const { sdkAgents, openrouterAgents } = loadOfficeAgents(office);
   log(
-    `Loaded ${Object.keys(officeAgents).length} office sub-agents: ${Object.keys(officeAgents).join(', ') || '(none)'}`,
+    `Loaded ${Object.keys(sdkAgents).length} SDK sub-agents: ${Object.keys(sdkAgents).join(', ') || '(none)'}`,
   );
+  if (openrouterAgents.length > 0) {
+    log(
+      `Loaded ${openrouterAgents.length} OpenRouter agents (via MCP): ${openrouterAgents.map((a) => a.slug).join(', ')}`,
+    );
+  }
+
+  // Build the augmented system prompt: global CLAUDE.md + OpenRouter agents
+  // directive (if any). Both are appended to the claude_code preset.
+  const openrouterBlock = buildOpenRouterAgentsBlock(openrouterAgents, office);
+  const systemPromptAppend =
+    (globalClaudeMd || '') + openrouterBlock || undefined;
 
   for await (const message of query({
     prompt: stream,
@@ -978,12 +1107,12 @@ async function runQuery(
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,
-      agents: Object.keys(officeAgents).length > 0 ? officeAgents : undefined,
-      systemPrompt: globalClaudeMd
+      agents: Object.keys(sdkAgents).length > 0 ? sdkAgents : undefined,
+      systemPrompt: systemPromptAppend
         ? {
             type: 'preset' as const,
             preset: 'claude_code' as const,
-            append: globalClaudeMd,
+            append: systemPromptAppend,
           }
         : undefined,
       allowedTools: [
@@ -1006,6 +1135,8 @@ async function runQuery(
         'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
+        ...(process.env.OPENROUTER_API_KEY ? ['mcp__openrouter__*'] : []),
+        ...(process.env.OLLAMA_HOST ? ['mcp__ollama__*'] : []),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -1021,6 +1152,36 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
+        // OpenRouter multi-model access — only enabled when API key is present
+        ...(process.env.OPENROUTER_API_KEY
+          ? {
+              openrouter: {
+                command: 'node',
+                args: [path.join(__dirname, 'openrouter-mcp.js')],
+                env: {
+                  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+                  OPENROUTER_DEFAULT_MODEL:
+                    process.env.OPENROUTER_DEFAULT_MODEL || '',
+                  OPENROUTER_BASE_URL:
+                    process.env.OPENROUTER_BASE_URL || '',
+                  NANOCLAW_OFFICE: process.env.NANOCLAW_OFFICE || '',
+                },
+              },
+            }
+          : {}),
+        // Ollama local-model access — only enabled when OLLAMA_HOST is set
+        ...(process.env.OLLAMA_HOST
+          ? {
+              ollama: {
+                command: 'node',
+                args: [path.join(__dirname, 'ollama-mcp-stdio.js')],
+                env: {
+                  OLLAMA_HOST: process.env.OLLAMA_HOST,
+                  OLLAMA_ADMIN_TOOLS: process.env.OLLAMA_ADMIN_TOOLS || '',
+                },
+              },
+            }
+          : {}),
       },
       hooks: {
         PreCompact: [
@@ -1126,7 +1287,6 @@ async function runQuery(
         total_cost_usd?: number;
       };
 
-      const office = deriveOfficeFromGroupFolder(containerInput.groupFolder);
       const containerName = containerInput.assistantName || office;
 
       if (resultMsg.modelUsage && Object.keys(resultMsg.modelUsage).length > 0) {
@@ -1265,8 +1425,14 @@ async function main(): Promise<void> {
     CLAUDE_CODE_AUTO_COMPACT_WINDOW: '165000',
   };
 
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
+
+  log(
+    `OpenRouter: ${process.env.OPENROUTER_API_KEY ? 'enabled' : 'disabled (no API key)'}${process.env.OPENROUTER_DEFAULT_MODEL ? ` (default: ${process.env.OPENROUTER_DEFAULT_MODEL})` : ''}`,
+  );
+  log(
+    `Ollama: ${process.env.OLLAMA_HOST ? `enabled (${process.env.OLLAMA_HOST})` : 'disabled (no OLLAMA_HOST)'}`,
+  );
 
   let sessionId = containerInput.sessionId;
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });

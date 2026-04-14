@@ -55,8 +55,8 @@ RATE LIMITS:
 
 ## Cost controls
 
-- Daily budget: R$ {{DAILY_BUDGET}}
-- Monthly budget: R$ {{MONTHLY_BUDGET}}
+- Daily budget: ${{DAILY_BUDGET}}
+- Monthly budget: ${{MONTHLY_BUDGET}}
 - Alert at 75% of daily budget via Telegram
 
 ## Execution rules (pipeline delegation) — ENFORCED AT RUNTIME

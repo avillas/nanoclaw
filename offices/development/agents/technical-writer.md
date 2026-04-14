@@ -2,7 +2,7 @@
 name: technical-writer
 office: development
 skill: technical-writer, subscription-system
-model: haiku
+model: stepfun/step-3.5-flash
 pipeline_position: 11
 receives_from: DevOps Engineer
 delivers_to: (end of pipeline)

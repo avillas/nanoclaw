@@ -2,7 +2,7 @@
 name: opportunity-validator
 office: innovation
 skill: opportunity-validator, quality-gate
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 5
 receives_from: Business Case Builder
 delivers_to: Innovation Reporter

@@ -263,7 +263,7 @@ export default function OfficeDetailPage() {
                 <div className="flex items-center gap-3 text-[10px] font-mono text-text-muted">
                   <span>#{agent.pipelinePosition}</span>
                   <span>{agent.tasksCompleted} tasks</span>
-                  <span className="ml-auto">R$ {agent.costToday.toFixed(2)}</span>
+                  <span className="ml-auto">${agent.costToday.toFixed(2)}</span>
                 </div>
               </div>
             ))}

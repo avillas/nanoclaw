@@ -43,8 +43,8 @@ export default function DashboardPage() {
     { label: 'Active Now', value: data.activeAgents, icon: Zap, color: 'text-status-online' },
     { label: 'Running Pipelines', value: data.runningPipelines, icon: GitBranch, color: 'text-office-development' },
     { label: 'Completed Today', value: data.completedToday, icon: CheckCircle, color: 'text-status-online' },
-    { label: 'Cost Today', value: `R$ ${data.totalCostToday.toFixed(2)}`, icon: DollarSign, color: 'text-office-marketing' },
-    { label: 'Cost This Month', value: `R$ ${data.totalCostMonth.toFixed(2)}`, icon: TrendingUp, color: 'text-office-innovation' },
+    { label: 'Cost Today', value: `$ ${data.totalCostToday.toFixed(2)}`, icon: DollarSign, color: 'text-office-marketing' },
+    { label: 'Cost This Month', value: `$ ${data.totalCostMonth.toFixed(2)}`, icon: TrendingUp, color: 'text-office-innovation' },
   ];
 
   return (
@@ -131,9 +131,9 @@ function OfficeCard({ office, delay }: { office: Office; delay: number }) {
           <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider">Daily Budget</span>
           <span className="text-xs font-mono">
             <span className={budgetStatus === 'ok' ? colors.text : budgetStatus === 'warning' ? 'text-status-warning' : 'text-status-error'}>
-              R$ {office.dailySpent.toFixed(2)}
+              ${office.dailySpent.toFixed(2)}
             </span>
-            <span className="text-text-muted"> / R$ {office.dailyBudget.toFixed(2)}</span>
+            <span className="text-text-muted"> / ${office.dailyBudget.toFixed(2)}</span>
           </span>
         </div>
         <div className="h-1.5 bg-surface-3 rounded-full overflow-hidden">

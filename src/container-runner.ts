@@ -14,7 +14,10 @@ import {
   GROUPS_DIR,
   IDLE_TIMEOUT,
   OLLAMA_ADMIN_TOOLS,
+  OLLAMA_HOST,
   ONECLI_URL,
+  OPENROUTER_API_KEY,
+  OPENROUTER_DEFAULT_MODEL,
   TIMEZONE,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
@@ -315,9 +318,21 @@ async function buildContainerArgs(
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
 
-  // Forward Ollama admin tools flag if enabled
+  // Forward Ollama config — host is needed for the in-container MCP server
+  // to reach the host's Ollama daemon.
+  if (OLLAMA_HOST) {
+    args.push('-e', `OLLAMA_HOST=${OLLAMA_HOST}`);
+  }
   if (OLLAMA_ADMIN_TOOLS) {
     args.push('-e', 'OLLAMA_ADMIN_TOOLS=true');
+  }
+
+  // OpenRouter multi-model access — pass API key and default model to container
+  if (OPENROUTER_API_KEY) {
+    args.push('-e', `OPENROUTER_API_KEY=${OPENROUTER_API_KEY}`);
+    if (OPENROUTER_DEFAULT_MODEL) {
+      args.push('-e', `OPENROUTER_DEFAULT_MODEL=${OPENROUTER_DEFAULT_MODEL}`);
+    }
   }
 
   // Expose the office name so the pipeline-tracker hook can read

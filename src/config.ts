@@ -9,7 +9,12 @@ const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'OLLAMA_ADMIN_TOOLS',
+  'OLLAMA_HOST',
+  'OLLAMA_PREFILTER_ENABLED',
+  'OLLAMA_PREFILTER_MODEL',
   'ONECLI_URL',
+  'OPENROUTER_API_KEY',
+  'OPENROUTER_DEFAULT_MODEL',
   'TZ',
 ]);
 
@@ -20,6 +25,17 @@ export const ASSISTANT_HAS_OWN_NUMBER =
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 export const OLLAMA_ADMIN_TOOLS =
   (process.env.OLLAMA_ADMIN_TOOLS || envConfig.OLLAMA_ADMIN_TOOLS) === 'true';
+export const OLLAMA_HOST =
+  process.env.OLLAMA_HOST ||
+  envConfig.OLLAMA_HOST ||
+  'http://172.17.0.1:11434';
+export const OLLAMA_PREFILTER_ENABLED =
+  (process.env.OLLAMA_PREFILTER_ENABLED ||
+    envConfig.OLLAMA_PREFILTER_ENABLED) === 'true';
+export const OLLAMA_PREFILTER_MODEL =
+  process.env.OLLAMA_PREFILTER_MODEL ||
+  envConfig.OLLAMA_PREFILTER_MODEL ||
+  'qwen3:8b';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
@@ -55,6 +71,10 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(
   10,
 ); // 10MB default
 export const ONECLI_URL = process.env.ONECLI_URL || envConfig.ONECLI_URL;
+export const OPENROUTER_API_KEY =
+  process.env.OPENROUTER_API_KEY || envConfig.OPENROUTER_API_KEY;
+export const OPENROUTER_DEFAULT_MODEL =
+  process.env.OPENROUTER_DEFAULT_MODEL || envConfig.OPENROUTER_DEFAULT_MODEL;
 export const MAX_MESSAGES_PER_PROMPT = Math.max(
   1,
   parseInt(process.env.MAX_MESSAGES_PER_PROMPT || '10', 10) || 10,

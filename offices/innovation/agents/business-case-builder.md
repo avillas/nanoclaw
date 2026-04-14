@@ -2,7 +2,7 @@
 name: business-case-builder
 office: innovation
 skill: business-case-builder
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 4
 receives_from: Technology Scout
 delivers_to: Opportunity Validator

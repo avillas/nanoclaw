@@ -2,7 +2,7 @@
 name: database-architect
 office: development
 skill: database-architect, git-workflow, subscription-system
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 7
 receives_from: Engineering Manager
 delivers_to: QA Engineer

@@ -2,7 +2,7 @@
 name: qa-engineer
 office: development
 skill: qa-engineer, subscription-system
-model: haiku
+model: stepfun/step-3.5-flash
 pipeline_position: 8
 receives_from: Frontend Developer, Backend Developer, Database Architect
 delivers_to: Security Engineer

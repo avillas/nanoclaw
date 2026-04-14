@@ -2,7 +2,7 @@
 name: instagram-strategist
 office: marketing
 skill: instagram-curator
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 3
 receives_from: Content Reviewer
 delivers_to: Growth Hacker

@@ -2,7 +2,7 @@
 name: competitive-intelligence-analyst
 office: innovation
 skill: competitive-intelligence, web-research
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 2
 receives_from: Trend Researcher
 delivers_to: Technology Scout

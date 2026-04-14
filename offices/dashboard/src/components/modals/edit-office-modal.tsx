@@ -191,14 +191,14 @@ export function EditOfficeModal({ office, open, onClose, onSaved }: EditOfficeMo
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
-                  label="Budget Diario (R$)"
+                  label="Budget Diario (USD)"
                   type="text"
                   value={meta.dailyBudget}
                   onChange={(v) => updateMeta('dailyBudget', v)}
                   placeholder="e.g. 15.00"
                 />
                 <Field
-                  label="Budget Mensal (R$)"
+                  label="Budget Mensal (USD)"
                   type="text"
                   value={meta.monthlyBudget}
                   onChange={(v) => updateMeta('monthlyBudget', v)}

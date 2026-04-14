@@ -230,19 +230,56 @@ export function startIpcWatcher(deps: IpcDeps): void {
 
 // --- Cost report processing ---
 
-// Pricing per 1M tokens in BRL
+// Pricing per 1M tokens in USD
 const COST_TABLE: Record<
   string,
   { input: number; output: number; cacheRead: number; cacheWrite: number }
 > = {
-  opus: { input: 75, output: 375, cacheRead: 7.5, cacheWrite: 93.75 },
-  sonnet: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-  haiku: { input: 1.25, output: 6.25, cacheRead: 0.125, cacheWrite: 1.5625 },
+  // Anthropic (direct)
+  opus: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  sonnet: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  haiku: { input: 0.25, output: 1.25, cacheRead: 0.025, cacheWrite: 0.3125 },
   ollama: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  // OpenRouter models
+  'openrouter/gpt-4o': { input: 2.5, output: 10, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/gpt-4o-mini': { input: 0.15, output: 0.6, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/gemini-2.5-flash': { input: 0.15, output: 0.6, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/deepseek': { input: 0.27, output: 1.1, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/llama': { input: 0.2, output: 0.6, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/mistral': { input: 2, output: 6, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/qwen': { input: 0.5, output: 2, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/stepfun': { input: 0.13, output: 0.5, cacheRead: 0, cacheWrite: 0 },
+  // Fallback for unknown OpenRouter models — sonnet-equivalent pricing
+  'openrouter/default': { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
 };
 
 function resolveModelTier(model: string): string {
   const lower = (model || '').toLowerCase();
+
+  // OpenRouter models — prefixed with "openrouter/" by the MCP server
+  if (lower.startsWith('openrouter/')) {
+    const modelName = lower.replace('openrouter/', '');
+    if (modelName.includes('gpt-4o-mini')) return 'openrouter/gpt-4o-mini';
+    if (modelName.includes('gpt-4o') || modelName.includes('gpt-4'))
+      return 'openrouter/gpt-4o';
+    if (modelName.includes('gemini') && modelName.includes('flash'))
+      return 'openrouter/gemini-2.5-flash';
+    if (modelName.includes('gemini')) return 'openrouter/gemini-2.5-pro';
+    if (modelName.includes('deepseek')) return 'openrouter/deepseek';
+    if (modelName.includes('llama')) return 'openrouter/llama';
+    if (modelName.includes('mistral')) return 'openrouter/mistral';
+    if (modelName.includes('qwen')) return 'openrouter/qwen';
+    if (modelName.includes('stepfun') || modelName.includes('step-'))
+      return 'openrouter/stepfun';
+    // Claude via OpenRouter still maps to Anthropic tiers
+    if (modelName.includes('opus')) return 'opus';
+    if (modelName.includes('sonnet')) return 'sonnet';
+    if (modelName.includes('haiku')) return 'haiku';
+    return 'openrouter/default';
+  }
+
+  // Anthropic direct models
   if (lower.includes('opus')) return 'opus';
   if (lower.includes('sonnet')) return 'sonnet';
   if (lower.includes('haiku')) return 'haiku';
@@ -251,7 +288,7 @@ function resolveModelTier(model: string): string {
   return 'sonnet';
 }
 
-function computeCostBrl(
+function computeCostUsd(
   model: string,
   tokensIn: number,
   tokensOut: number,
@@ -289,6 +326,7 @@ function processCostFile(
     tokens_cache_write?: number;
     container_name?: string;
     date?: string;
+    cost_usd?: number;
   },
   sourceGroup: string,
 ): void {
@@ -301,13 +339,12 @@ function processCostFile(
   const containerName = data.container_name || '';
   const date = data.date || new Date().toISOString().split('T')[0];
   const office = extractOfficeFromGroupFolder(sourceGroup);
-  const costBrl = computeCostBrl(
-    model,
-    tokensIn,
-    tokensOut,
-    tokensCacheRead,
-    tokensCacheWrite,
-  );
+
+  // Prefer actual USD cost from OpenRouter when available
+  const costUsd =
+    data.cost_usd != null && data.cost_usd > 0
+      ? Math.round(data.cost_usd * 10000) / 10000
+      : computeCostUsd(model, tokensIn, tokensOut, tokensCacheRead, tokensCacheWrite);
 
   const costId = `cost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -321,13 +358,13 @@ function processCostFile(
     tokensOut,
     tokensCacheRead,
     tokensCacheWrite,
-    costBrl,
+    costUsd,
     modelUsed: model,
     containerName,
   });
 
   logger.info(
-    { costId, office, agentName, model, costBrl, sourceGroup },
+    { costId, office, agentName, model, costUsd, sourceGroup },
     'Agent cost recorded via IPC',
   );
 }

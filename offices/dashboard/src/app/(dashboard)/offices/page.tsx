@@ -79,7 +79,7 @@ export default function OfficesPage() {
               </div>
               <div className="text-center">
                 <p className="stat-label mb-1">Daily Cost</p>
-                <p className="font-mono font-bold text-xs sm:text-sm">R$ {office.dailySpent.toFixed(2)}</p>
+                <p className="font-mono font-bold text-xs sm:text-sm">${office.dailySpent.toFixed(2)}</p>
               </div>
               <div className="text-center">
                 <p className="stat-label mb-1">Status</p>

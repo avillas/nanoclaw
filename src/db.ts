@@ -93,7 +93,7 @@ function createSchema(database: Database.Database): void {
       tokens_out INTEGER DEFAULT 0,
       tokens_cache_read INTEGER DEFAULT 0,
       tokens_cache_write INTEGER DEFAULT 0,
-      cost_brl REAL DEFAULT 0,
+      cost_usd REAL DEFAULT 0,
       model_used TEXT,
       container_name TEXT,
       recorded_at TEXT NOT NULL
@@ -212,9 +212,28 @@ export function initDatabase(): void {
 
   db = new Database(dbPath);
   createSchema(db);
+  runMigrations(db);
 
   // Migrate from JSON files if they exist
   migrateJsonState();
+}
+
+/**
+ * Incremental schema migrations that run after initial schema creation.
+ * Each migration checks a precondition before executing, so they are
+ * idempotent and safe to run on every startup.
+ */
+function runMigrations(database: Database.Database): void {
+  // Migration: rename cost_brl → cost_usd (all costs now stored in USD)
+  const cols = database
+    .prepare("PRAGMA table_info('agent_costs')")
+    .all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === 'cost_brl')) {
+    database.exec(
+      'ALTER TABLE agent_costs RENAME COLUMN cost_brl TO cost_usd',
+    );
+    logger.info('Migration: renamed agent_costs.cost_brl → cost_usd');
+  }
 }
 
 /** @internal - for tests only. Creates a fresh in-memory database. */
@@ -748,13 +767,13 @@ export function recordAgentCost(cost: {
   tokensOut: number;
   tokensCacheRead: number;
   tokensCacheWrite: number;
-  costBrl: number;
+  costUsd: number;
   modelUsed: string;
   containerName: string;
 }): void {
   db.prepare(
     `
-    INSERT INTO agent_costs (id, office, agent_name, group_folder, date, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, cost_brl, model_used, container_name, recorded_at)
+    INSERT INTO agent_costs (id, office, agent_name, group_folder, date, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, cost_usd, model_used, container_name, recorded_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
@@ -767,7 +786,7 @@ export function recordAgentCost(cost: {
     cost.tokensOut,
     cost.tokensCacheRead,
     cost.tokensCacheWrite,
-    cost.costBrl,
+    cost.costUsd,
     cost.modelUsed,
     cost.containerName,
     new Date().toISOString(),
@@ -784,14 +803,14 @@ export function getOfficeCosts(
   tokens_out: number;
   tokens_cache_read: number;
   tokens_cache_write: number;
-  cost_brl: number;
+  cost_usd: number;
   agent_name: string;
   model_used: string;
 }> {
   return db
     .prepare(
       `
-    SELECT date, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, cost_brl, agent_name, model_used
+    SELECT date, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write, cost_usd, agent_name, model_used
     FROM agent_costs WHERE office = ? AND date >= ? AND date <= ?
     ORDER BY recorded_at DESC
   `,
@@ -803,12 +822,12 @@ export function getDailyCostSummary(date: string): Array<{
   office: string;
   total_tokens_in: number;
   total_tokens_out: number;
-  total_cost_brl: number;
+  total_cost_usd: number;
 }> {
   return db
     .prepare(
       `
-    SELECT office, SUM(tokens_in) as total_tokens_in, SUM(tokens_out) as total_tokens_out, SUM(cost_brl) as total_cost_brl
+    SELECT office, SUM(tokens_in) as total_tokens_in, SUM(tokens_out) as total_tokens_out, SUM(cost_usd) as total_cost_usd
     FROM agent_costs WHERE date = ? GROUP BY office
   `,
     )

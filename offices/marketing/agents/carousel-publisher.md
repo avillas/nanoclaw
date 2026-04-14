@@ -2,7 +2,7 @@
 name: carousel-publisher
 office: marketing
 skill: carousel-growth-engine
-model: haiku
+model: stepfun/step-3.5-flash
 pipeline_position: 8
 receives_from: Campaign Validator (after user approval)
 delivers_to: Analytics Engineer

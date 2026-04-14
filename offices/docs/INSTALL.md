@@ -84,19 +84,19 @@ Cada escritorio e uma pasta independente com tres componentes:
 
 Pipeline: Content Writer → Content Reviewer → Instagram Strategist → Growth Hacker → Image Prompt Engineer → Brand Guardian → Campaign Validator → Carousel Publisher → Analytics Engineer
 
-Orcamento: R$ 15/dia, R$ 100/mes
+Orcamento: $10/day, $175/month
 
 ### Development (13 agentes)
 
 Pipeline: Product Manager → Product Reviewer → UX Architect → UI Designer → Software Architect → Engineering Manager → [Frontend | Backend | DB Architect] (paralelo) → QA Engineer → Security Engineer → DevOps Engineer → Technical Writer
 
-Orcamento: R$ 15/dia, R$ 200/mes
+Orcamento: $10/day, $350/month
 
 ### Innovation (6 agentes)
 
 Pipeline: Trend Researcher → Competitive Intelligence → Technology Scout → Business Case Builder → Opportunity Validator → Innovation Reporter → (handoff para Development)
 
-Orcamento: R$ 10/dia, R$ 100/mes
+Orcamento: $10/day, $20/month
 
 ## Skills compartilhadas
 

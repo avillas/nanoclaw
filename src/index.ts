@@ -10,10 +10,14 @@ import {
   GROUPS_DIR,
   IDLE_TIMEOUT,
   MAX_MESSAGES_PER_PROMPT,
+  OLLAMA_HOST,
+  OLLAMA_PREFILTER_ENABLED,
+  OLLAMA_PREFILTER_MODEL,
   ONECLI_URL,
   POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
+import { prefilterMessage } from './ollama-prefilter.js';
 import './channels/index.js';
 import {
   getChannelFactory,
@@ -249,6 +253,53 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
     );
     if (!hasTrigger) return true;
+  }
+
+  // Ollama pre-filter — classify the message before paying for a Claude
+  // container spin-up. Trivial messages get a canned ack (or nothing);
+  // simple Q&A is answered by Ollama directly. Always bypassed for the
+  // main group (admin commands need full Claude). Fails open: any error
+  // falls through to the normal runAgent path.
+  if (OLLAMA_PREFILTER_ENABLED && !isMainGroup) {
+    const lastMessage = missedMessages[missedMessages.length - 1];
+    const triggerPattern = getTriggerPattern(group.trigger);
+    const result = await prefilterMessage({
+      userText: lastMessage.content,
+      triggerPattern,
+      ollamaHost: OLLAMA_HOST,
+      model: OLLAMA_PREFILTER_MODEL,
+    });
+
+    if (result.ran) {
+      logger.info(
+        {
+          group: group.name,
+          classification: result.classification,
+          reason: result.reason,
+        },
+        'Pre-filter decision',
+      );
+    }
+
+    if (result.classification === 'trivial') {
+      // Advance cursor — these messages are handled.
+      lastAgentTimestamp[chatJid] =
+        missedMessages[missedMessages.length - 1].timestamp;
+      saveState();
+      if (result.cannedReply) {
+        await channel.sendMessage(chatJid, result.cannedReply);
+      }
+      return true;
+    }
+
+    if (result.classification === 'simple-answer' && result.answer) {
+      lastAgentTimestamp[chatJid] =
+        missedMessages[missedMessages.length - 1].timestamp;
+      saveState();
+      await channel.sendMessage(chatJid, result.answer);
+      return true;
+    }
+    // 'needs-claude' (or fail-open) → fall through
   }
 
   const prompt = formatMessages(missedMessages, TIMEZONE);

@@ -2,7 +2,7 @@
 name: ad-copywriter
 office: marketing
 skill: ad-copy-specialist
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 0
 receives_from: NanoClaw (on-demand, not part of main pipeline)
 delivers_to: Content Reviewer

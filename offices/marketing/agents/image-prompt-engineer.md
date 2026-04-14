@@ -2,7 +2,7 @@
 name: image-prompt-engineer
 office: marketing
 skill: image-prompt-engineer
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 5
 receives_from: Growth Hacker
 delivers_to: Brand Guardian

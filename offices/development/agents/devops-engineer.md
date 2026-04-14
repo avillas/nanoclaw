@@ -2,7 +2,7 @@
 name: devops-engineer
 office: development
 skill: devops-engineer, git-workflow
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 10
 receives_from: Security Engineer
 delivers_to: Technical Writer

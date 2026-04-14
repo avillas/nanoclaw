@@ -2,7 +2,7 @@
 name: ui-designer
 office: development
 skill: ui-designer
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 4
 receives_from: UX Architect
 delivers_to: Software Architect

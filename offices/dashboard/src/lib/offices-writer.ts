@@ -534,9 +534,9 @@ export interface CreateOfficeInput {
   mission: string;
   /** Default model for agents */
   defaultModel: ModelTier;
-  /** Daily budget in BRL */
+  /** Daily budget in USD */
   dailyBudget: number;
-  /** Monthly budget in BRL */
+  /** Monthly budget in USD */
   monthlyBudget: number;
   /** SOUL.md sections */
   soul: {
@@ -767,15 +767,15 @@ export function updateOffice(
 
   if (m.dailyBudget !== undefined) {
     content = content.replace(
-      /Daily budget[:\s]*R?\$?\s*[\d,.]+/i,
-      `Daily budget: R$ ${m.dailyBudget}`,
+      /Daily budget[:\s]*(?:US)?R?\$?\s*[\d,.]+/i,
+      `Daily budget: $${m.dailyBudget}`,
     );
   }
 
   if (m.monthlyBudget !== undefined) {
     content = content.replace(
-      /Monthly budget[:\s]*R?\$?\s*[\d,.]+/i,
-      `Monthly budget: R$ ${m.monthlyBudget}`,
+      /Monthly budget[:\s]*(?:US)?R?\$?\s*[\d,.]+/i,
+      `Monthly budget: $${m.monthlyBudget}`,
     );
   }
 

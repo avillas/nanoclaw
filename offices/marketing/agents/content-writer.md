@@ -2,7 +2,7 @@
 name: content-writer
 office: marketing
 skill: content-creator
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 1
 receives_from: NanoClaw (user demand) | Analytics Engineer (feedback loop)
 delivers_to: Content Reviewer

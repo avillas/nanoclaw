@@ -37,9 +37,9 @@ export default function CostsPage() {
               <DollarSign className="w-5 h-5 text-accent" />
               <span className="stat-label">Daily Total</span>
             </div>
-            <p className="stat-value text-3xl text-accent mb-3">R$ {totalDaily.toFixed(2)}</p>
+            <p className="stat-value text-3xl text-accent mb-3">${totalDaily.toFixed(2)}</p>
             <div className="flex justify-between text-xs font-mono text-text-muted mb-1.5">
-              <span>Budget: R$ {totalDailyBudget.toFixed(2)}</span>
+              <span>Budget: ${totalDailyBudget.toFixed(2)}</span>
               <span>{((totalDaily / totalDailyBudget) * 100).toFixed(0)}%</span>
             </div>
             <div className="h-2 bg-surface-3 rounded-full overflow-hidden">
@@ -52,9 +52,9 @@ export default function CostsPage() {
               <TrendingUp className="w-5 h-5 text-accent" />
               <span className="stat-label">Monthly Total</span>
             </div>
-            <p className="stat-value text-3xl text-accent mb-3">R$ {totalMonthly.toFixed(2)}</p>
+            <p className="stat-value text-3xl text-accent mb-3">${totalMonthly.toFixed(2)}</p>
             <div className="flex justify-between text-xs font-mono text-text-muted mb-1.5">
-              <span>Budget: R$ {totalMonthlyBudget.toFixed(2)}</span>
+              <span>Budget: ${totalMonthlyBudget.toFixed(2)}</span>
               <span>{((totalMonthly / totalMonthlyBudget) * 100).toFixed(0)}%</span>
             </div>
             <div className="h-2 bg-surface-3 rounded-full overflow-hidden">
@@ -86,7 +86,7 @@ export default function CostsPage() {
                       <span className="text-xs text-text-muted">Daily</span>
                       <div className="flex items-center gap-1">
                         {dailyAlert && <AlertTriangle className="w-3 h-3 text-status-warning" />}
-                        <span className="text-xs font-mono">R$ {cost.dailySpent.toFixed(2)} / R$ {cost.dailyBudget.toFixed(2)}</span>
+                        <span className="text-xs font-mono">${cost.dailySpent.toFixed(2)} / ${cost.dailyBudget.toFixed(2)}</span>
                       </div>
                     </div>
                     <div className="h-2 bg-surface-3 rounded-full overflow-hidden">
@@ -104,7 +104,7 @@ export default function CostsPage() {
                       <span className="text-xs text-text-muted">Monthly</span>
                       <div className="flex items-center gap-1">
                         {monthlyAlert && <AlertTriangle className="w-3 h-3 text-status-warning" />}
-                        <span className="text-xs font-mono">R$ {cost.monthlySpent.toFixed(2)} / R$ {cost.monthlyBudget.toFixed(2)}</span>
+                        <span className="text-xs font-mono">${cost.monthlySpent.toFixed(2)} / ${cost.monthlyBudget.toFixed(2)}</span>
                       </div>
                     </div>
                     <div className="h-2 bg-surface-3 rounded-full overflow-hidden">

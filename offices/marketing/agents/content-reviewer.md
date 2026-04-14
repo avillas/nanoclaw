@@ -2,7 +2,7 @@
 name: content-reviewer
 office: marketing
 skill: content-creator, quality-gate
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 2
 receives_from: Content Writer
 delivers_to: Instagram Strategist

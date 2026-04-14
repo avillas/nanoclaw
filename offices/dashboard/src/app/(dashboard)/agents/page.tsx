@@ -24,13 +24,30 @@ const statusConfig: Record<string, { color: string; label: string }> = {
   offline: { color: 'bg-gray-600', label: 'Offline' },
 };
 
-const modelColors: Record<string, string> = {
-  opus: 'text-purple-400 bg-purple-400/10',
-  sonnet: 'text-blue-400 bg-blue-400/10',
-  haiku: 'text-green-400 bg-green-400/10',
-  'ollama-llama3.2': 'text-amber-400 bg-amber-400/10',
-  'ollama-qwen3': 'text-orange-400 bg-orange-400/10',
-};
+/** Color a model badge by detecting its provider from the model ID. */
+function modelColor(model: string): string {
+  // Anthropic native shorthands
+  if (model === 'opus' || model.includes('claude-opus')) return 'text-purple-400 bg-purple-400/10';
+  if (model === 'sonnet' || model.includes('claude-sonnet')) return 'text-blue-400 bg-blue-400/10';
+  if (model === 'haiku' || model.includes('claude-haiku')) return 'text-green-400 bg-green-400/10';
+  // Local Ollama
+  if (model.startsWith('ollama-llama')) return 'text-amber-400 bg-amber-400/10';
+  if (model.startsWith('ollama-')) return 'text-orange-400 bg-orange-400/10';
+  // OpenRouter — color by provider prefix
+  if (model.startsWith('openai/')) return 'text-emerald-400 bg-emerald-400/10';
+  if (model.startsWith('google/')) return 'text-sky-400 bg-sky-400/10';
+  if (model.startsWith('qwen/')) return 'text-rose-400 bg-rose-400/10';
+  if (model.startsWith('deepseek/')) return 'text-fuchsia-400 bg-fuchsia-400/10';
+  if (model.startsWith('meta-llama/')) return 'text-amber-400 bg-amber-400/10';
+  if (model.startsWith('mistralai/')) return 'text-yellow-400 bg-yellow-400/10';
+  if (model.startsWith('stepfun/')) return 'text-cyan-400 bg-cyan-400/10';
+  if (model.startsWith('x-ai/')) return 'text-slate-300 bg-slate-300/10';
+  if (model.startsWith('cohere/')) return 'text-pink-400 bg-pink-400/10';
+  if (model.startsWith('perplexity/')) return 'text-teal-400 bg-teal-400/10';
+  // Other OpenRouter (contains /)
+  if (model.includes('/')) return 'text-indigo-400 bg-indigo-400/10';
+  return 'bg-surface-3 text-text-muted';
+}
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -142,7 +159,7 @@ export default function AgentsPage() {
                         <span className={cn('badge', officeColors[agent.office])}>{agent.office}</span>
                       </td>
                       <td className="px-3 sm:px-4 py-3">
-                        <span className={cn('badge', modelColors[agent.model] || 'bg-surface-3 text-text-muted')}>{agent.model}</span>
+                        <span className={cn('badge', modelColor(agent.model))}>{agent.model}</span>
                       </td>
                       <td className="px-3 sm:px-4 py-3 hidden sm:table-cell">
                         <span className="text-xs font-medium text-text-secondary">{sc.label}</span>
@@ -157,7 +174,7 @@ export default function AgentsPage() {
                         </span>
                       </td>
                       <td className="px-3 sm:px-4 py-3 text-right font-mono text-sm hidden md:table-cell">{agent.tasksCompleted}</td>
-                      <td className="px-3 sm:px-4 py-3 text-right font-mono text-sm hidden md:table-cell">R$ {agent.costToday.toFixed(2)}</td>
+                      <td className="px-3 sm:px-4 py-3 text-right font-mono text-sm hidden md:table-cell">${agent.costToday.toFixed(2)}</td>
                       <td className="px-3 sm:px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button

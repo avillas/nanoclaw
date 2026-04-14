@@ -2,7 +2,7 @@
 name: trend-researcher
 office: innovation
 skill: trend-researcher
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 1
 receives_from: NanoClaw (manual trigger) | Cron schedule (daily 7AM)
 delivers_to: Competitive Intelligence Analyst

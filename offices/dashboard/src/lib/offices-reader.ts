@@ -109,9 +109,9 @@ function parseMarkdownTable(content: string, headerMarker: string): Record<strin
   return rows;
 }
 
-/** Extract a value after a pattern like "Daily budget: R$ 15.00" */
+/** Extract a value after a pattern like "Daily budget: $15.00" or "Daily budget: R$ 15.00" */
 function extractBudgetValue(content: string, pattern: string): number {
-  const regex = new RegExp(`${pattern}[:\\s]*R?\\$?\\s*([\\d,.]+)`, 'i');
+  const regex = new RegExp(`${pattern}[:\\s]*(?:US)?R?\\$?\\s*([\\d,.]+)`, 'i');
   const match = content.match(regex);
   if (!match) return 0;
   return parseFloat(match[1].replace(',', '.'));
@@ -227,8 +227,8 @@ function readOffice(officeName: string): Office {
   const officeDailyCost = dailyCosts.find(c => c.office === officeName);
   const officeMonthlyCost = monthlyCosts.find(c => c.office === officeName);
 
-  const dailySpent = officeDailyCost?.total_cost_brl ?? 0;
-  const monthlySpent = officeMonthlyCost?.total_cost_brl ?? 0;
+  const dailySpent = officeDailyCost?.total_cost_usd ?? 0;
+  const monthlySpent = officeMonthlyCost?.total_cost_usd ?? 0;
 
   // Determine office status based on budget usage
   let status: OfficeStatus = 'operational';

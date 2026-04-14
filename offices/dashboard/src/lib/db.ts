@@ -52,7 +52,7 @@ export function getOfficeCosts(office: string, dateFrom: string, dateTo: string)
   try {
     return database.prepare(`
       SELECT date, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write,
-             cost_brl, agent_name, model_used
+             cost_usd, agent_name, model_used
       FROM agent_costs WHERE office = ? AND date >= ? AND date <= ?
       ORDER BY recorded_at DESC
     `).all(office, dateFrom, dateTo) as any[];
@@ -63,7 +63,7 @@ export function getOfficeCosts(office: string, dateFrom: string, dateTo: string)
 
 /** Get daily cost summary grouped by office */
 export function getDailyCostSummary(date: string): Array<{
-  office: string; total_tokens_in: number; total_tokens_out: number; total_cost_brl: number;
+  office: string; total_tokens_in: number; total_tokens_out: number; total_cost_usd: number;
 }> {
   const database = getDb();
   if (!database) return [];
@@ -73,7 +73,7 @@ export function getDailyCostSummary(date: string): Array<{
       SELECT office,
              SUM(tokens_in) as total_tokens_in,
              SUM(tokens_out) as total_tokens_out,
-             SUM(cost_brl) as total_cost_brl
+             SUM(cost_usd) as total_cost_usd
       FROM agent_costs WHERE date = ? GROUP BY office
     `).all(date) as any[];
   } catch {
@@ -83,7 +83,7 @@ export function getDailyCostSummary(date: string): Array<{
 
 /** Get monthly cost summary grouped by office */
 export function getMonthlyCostSummary(yearMonth: string): Array<{
-  office: string; total_tokens_in: number; total_tokens_out: number; total_cost_brl: number;
+  office: string; total_tokens_in: number; total_tokens_out: number; total_cost_usd: number;
 }> {
   const database = getDb();
   if (!database) return [];
@@ -93,7 +93,7 @@ export function getMonthlyCostSummary(yearMonth: string): Array<{
       SELECT office,
              SUM(tokens_in) as total_tokens_in,
              SUM(tokens_out) as total_tokens_out,
-             SUM(cost_brl) as total_cost_brl
+             SUM(cost_usd) as total_cost_usd
       FROM agent_costs WHERE date LIKE ? GROUP BY office
     `).all(`${yearMonth}%`) as any[];
   } catch {
@@ -146,7 +146,7 @@ export function getAgentCostsToday(date: string): Array<{
   try {
     return database.prepare(`
       SELECT agent_name, office,
-             SUM(cost_brl) as total_cost,
+             SUM(cost_usd) as total_cost,
              SUM(tokens_in + tokens_out) as total_tokens
       FROM agent_costs WHERE date = ?
       GROUP BY agent_name, office

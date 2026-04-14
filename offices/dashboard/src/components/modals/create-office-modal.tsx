@@ -3,18 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Building2, ChevronRight, ChevronLeft, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { MODEL_GROUPS } from '@/lib/model-options';
 
 interface CreateOfficeModalProps {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
 }
-
-const MODEL_OPTIONS = [
-  { value: 'haiku', label: 'Haiku', desc: 'Fast, low-cost' },
-  { value: 'sonnet', label: 'Sonnet', desc: 'Balanced (recommended)' },
-  { value: 'opus', label: 'Opus', desc: 'Most capable' },
-] as const;
 
 const STEPS = ['Basics', 'Soul (pt. 1)', 'Soul (pt. 2)', 'Review'] as const;
 
@@ -144,10 +139,10 @@ export function CreateOfficeModal({ open, onClose, onCreated }: CreateOfficeModa
               <Field label="Office Name" placeholder="e.g. Sales Office" value={form.displayName} onChange={(v) => update('displayName', v)} />
               <Field label="Slug" placeholder="auto-generated" value={form.name} onChange={(v) => update('name', v)} hint="Used as folder name" />
               <TextArea label="Mission" placeholder="What does this office do? What's its focus?" value={form.mission} onChange={(v) => update('mission', v)} rows={3} />
-              <SelectField label="Default Model" value={form.defaultModel} options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: `${m.label} — ${m.desc}` }))} onChange={(v) => update('defaultModel', v)} />
+              <SelectField label="Default Model" value={form.defaultModel} groups={MODEL_GROUPS} onChange={(v) => update('defaultModel', v)} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Daily Budget (R$)" type="number" value={String(form.dailyBudget)} onChange={(v) => update('dailyBudget', parseFloat(v) || 0)} />
-                <Field label="Monthly Budget (R$)" type="number" value={String(form.monthlyBudget)} onChange={(v) => update('monthlyBudget', parseFloat(v) || 0)} />
+                <Field label="Daily Budget (USD)" type="number" value={String(form.dailyBudget)} onChange={(v) => update('dailyBudget', parseFloat(v) || 0)} />
+                <Field label="Monthly Budget (USD)" type="number" value={String(form.monthlyBudget)} onChange={(v) => update('monthlyBudget', parseFloat(v) || 0)} />
               </div>
             </>
           )}
@@ -192,8 +187,8 @@ export function CreateOfficeModal({ open, onClose, onCreated }: CreateOfficeModa
                       <ReviewRow label="Name" value={form.displayName} />
                       <ReviewRow label="Slug" value={form.name} />
                       <ReviewRow label="Model" value={form.defaultModel} />
-                      <ReviewRow label="Daily Budget" value={`R$ ${form.dailyBudget.toFixed(2)}`} />
-                      <ReviewRow label="Monthly Budget" value={`R$ ${form.monthlyBudget.toFixed(2)}`} />
+                      <ReviewRow label="Daily Budget" value={`${form.dailyBudget.toFixed(2)}`} />
+                      <ReviewRow label="Monthly Budget" value={`${form.monthlyBudget.toFixed(2)}`} />
                     </div>
                   </div>
                   <div className="bg-surface-0 rounded-xl p-4 border border-border">
@@ -307,8 +302,12 @@ function TextArea({ label, placeholder, value, onChange, rows = 4 }: {
   );
 }
 
-function SelectField({ label, value, options, onChange }: {
-  label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void;
+function SelectField({ label, value, options, groups, onChange }: {
+  label: string;
+  value: string;
+  options?: { value: string; label: string }[];
+  groups?: { group: string; options: { value: string; label: string }[] }[];
+  onChange: (v: string) => void;
 }) {
   return (
     <div>
@@ -318,9 +317,17 @@ function SelectField({ label, value, options, onChange }: {
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-2 bg-surface-0 border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
+        {groups
+          ? groups.map((g) => (
+              <optgroup key={g.group} label={g.group}>
+                {g.options.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </optgroup>
+            ))
+          : (options || []).map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
       </select>
     </div>
   );

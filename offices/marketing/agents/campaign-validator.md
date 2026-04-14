@@ -2,7 +2,7 @@
 name: campaign-validator
 office: marketing
 skill: campaign-validator, approval-request
-model: haiku
+model: stepfun/step-3.5-flash
 pipeline_position: 7
 receives_from: Brand Guardian
 delivers_to: Carousel Publisher (after user approval)

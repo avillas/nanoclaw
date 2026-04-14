@@ -2,7 +2,7 @@
 name: technology-scout
 office: innovation
 skill: technology-scout, web-research
-model: haiku
+model: stepfun/step-3.5-flash
 pipeline_position: 3
 receives_from: Competitive Intelligence Analyst
 delivers_to: Business Case Builder

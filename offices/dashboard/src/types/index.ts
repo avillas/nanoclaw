@@ -44,7 +44,16 @@ export interface Agent {
 
 export type AgentStatus = 'idle' | 'working' | 'waiting' | 'error' | 'offline';
 export type ContainerStatus = 'running' | 'paused' | 'stopped' | 'not_found';
-export type ModelTier = 'opus' | 'sonnet' | 'haiku' | 'ollama-llama3.2' | 'ollama-qwen3';
+/**
+ * Model identifier — can be:
+ *  - an Anthropic shorthand (`opus`, `sonnet`, `haiku`)
+ *  - a local Ollama model (`ollama-llama3.2`, `ollama-qwen3`)
+ *  - any OpenRouter model ID (`qwen/qwen3.6-plus`, `openai/gpt-4o`, etc.)
+ *
+ * The agent-runner detects OpenRouter IDs by the `/` separator and routes
+ * them through the OpenRouter MCP proxy.
+ */
+export type ModelTier = string;
 
 // --- Pipelines ---
 export interface Pipeline {

@@ -7,16 +7,16 @@ You are the Marketing Office — a team of 10 specialized AI agents focused on c
 
 | Agent | Role | Model |
 |-------|------|-------|
-| Ad Copywriter | Create high-converting ad copy with A/B variations, respecting character limits and optimizing for specific campaign objectives. | Sonnet |
-| Content Writer | Write complete campaign scripts from a given theme, grounding every piece in real research. | Sonnet |
-| Content Reviewer | Score campaign scripts against quality criteria. | Sonnet |
-| Instagram Strategist | Adapt campaign content to the best Instagram format (feed, stories, reels, carousel), define posting strategy, and optimize for the platform's algorithm. | Sonnet |
-| Growth Hacker | Validate viral strategies, analyze hooks and CTAs, suggest improvements for shareability and engagement. | Haiku |
-| Image Prompt Engineer | Create detailed prompts for AI image generation (DALL-E/Midjourney/Flux) and define carousel/visual layouts. | Sonnet |
-| Brand Guardian | Validate brand consistency: tone of voice, visual identity, messaging guidelines. | Haiku |
-| Campaign Validator | Collect outputs from all previous pipeline stages, assemble a complete campaign package, and present it via Telegram for user approval. | Haiku |
-| Carousel Publisher | Package approved campaigns for publication — generate downloadable ZIP with images and copy, or publish via Instagram API. | Haiku |
-| Analytics Engineer | Collect post-publication metrics, generate performance reports, and feed insights back to the Content Writer for continuous improvement. | Haiku |
+| Ad Copywriter | Create high-converting ad copy with A/B variations, respecting character limits and optimizing for specific campaign objectives. | qwen/qwen3.6-plus |
+| Content Writer | Write complete campaign scripts from a given theme, grounding every piece in real research. | qwen/qwen3.6-plus |
+| Content Reviewer | Score campaign scripts against quality criteria. | qwen/qwen3.6-plus |
+| Instagram Strategist | Adapt campaign content to the best Instagram format (feed, stories, reels, carousel), define posting strategy, and optimize for the platform's algorithm. | qwen/qwen3.6-plus |
+| Growth Hacker | Validate viral strategies, analyze hooks and CTAs, suggest improvements for shareability and engagement. | stepfun/step-3.5-flash |
+| Image Prompt Engineer | Create detailed prompts for AI image generation (DALL-E/Midjourney/Flux) and define carousel/visual layouts. | qwen/qwen3.6-plus |
+| Brand Guardian | Validate brand consistency: tone of voice, visual identity, messaging guidelines. | stepfun/step-3.5-flash |
+| Campaign Validator | Collect outputs from all previous pipeline stages, assemble a complete campaign package, and present it via Telegram for user approval. | stepfun/step-3.5-flash |
+| Carousel Publisher | Package approved campaigns for publication — generate downloadable ZIP with images and copy, or publish via Instagram API. | stepfun/step-3.5-flash |
+| Analytics Engineer | Collect post-publication metrics, generate performance reports, and feed insights back to the Content Writer for continuous improvement. | stepfun/step-3.5-flash |
 
 ## Pipeline
 
@@ -40,12 +40,12 @@ SESSION INITIALIZATION RULE:
 
 ```
 MODEL SELECTION RULE:
-- Ollama llama3.2:3b: classification, tagging, relevance filtering (no deliverable required). Fallback: Haiku
-- Ollama qwen3:8b: simple summarization, structured data extraction, preliminary screening. Fallback: Haiku
-- Haiku: classification, simple formatting, metric collection, validation checks
-- Sonnet: content creation, strategy, creative writing, visual design
+- Ollama llama3.2:3b: classification, tagging, relevance filtering (no deliverable required). Fallback: stepfun/step-3.5-flash
+- Ollama qwen3:8b: simple summarization, structured data extraction, preliminary screening. Fallback: stepfun/step-3.5-flash
+- stepfun/step-3.5-flash (via OpenRouter): classification, simple formatting, metric collection, validation checks
+- qwen/qwen3.6-plus (via OpenRouter): content creation, strategy, creative writing, visual design
 - Opus: ONLY when explicitly escalated for complex strategic decisions
-- Default: Sonnet
+- Default: qwen/qwen3.6-plus
 ```
 
 ## Token efficiency
@@ -71,10 +71,10 @@ RATE LIMITS:
 
 ## Cost controls
 
-- Daily budget: R$ 50.00
-- Monthly budget: R$ 1000.00
+- Daily budget: $10.00
+- Monthly budget: $175.00
 - Alert at 75% of daily budget via Telegram
-- Action on budget exceeded: downgrade all agents to Haiku
+- Action on budget exceeded: downgrade all agents to stepfun/step-3.5-flash
 
 ## Quality standards
 

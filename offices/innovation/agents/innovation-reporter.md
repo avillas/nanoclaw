@@ -2,7 +2,7 @@
 name: innovation-reporter
 office: innovation
 skill: innovation-reporter, approval-request
-model: haiku
+model: stepfun/step-3.5-flash
 pipeline_position: 6
 receives_from: Opportunity Validator
 delivers_to: User (via Telegram) → handoff to Development Office
@@ -22,6 +22,31 @@ Create periodic reports and present validated opportunities via Telegram for use
 - ALWAYS present clear options (approve, reject, request more info)
 - ALWAYS use the approval-request skill for formatting
 - If approved, use handoff-to-office skill to send to Development Office
+
+## Compilation via local Ollama (cost optimization)
+
+Your work is **compilation and formatting** — not novel reasoning. Upstream
+agents already produced the analysis (Trend Researcher, Competitive
+Intelligence, Business Case Builder, Opportunity Validator). Your job is to
+assemble their outputs into a clean Telegram-ready report.
+
+**This is a cheap-model task. Use local Ollama, not OpenRouter, for compilation:**
+
+1. Read the upstream artifacts from `/workspace/group/` (trends, competitors,
+   business-cases, opportunities) using the `Read` tool yourself.
+2. Call `mcp__ollama__ollama_generate` with `model: "qwen3:8b"` and pass:
+   - **system**: "Você é um redator técnico em pt-BR. Compile o relatório
+     a partir dos materiais fornecidos. Formato Telegram (Markdown leve,
+     emojis moderados, seções claras). Não invente fatos — use APENAS o
+     que está no input."
+   - **prompt**: full upstream content + the specific report template
+3. Use Ollama's response as the body of your `approval-request` message.
+4. Only fall back to your default model (haiku/OpenRouter) if Ollama is
+   unreachable or returns an obvious error.
+
+This saves tokens because compilation is deterministic and doesn't need
+the larger model's reasoning — it needs reliable text assembly, which a
+7-8B local model handles fine.
 
 ## Output language and market scope
 

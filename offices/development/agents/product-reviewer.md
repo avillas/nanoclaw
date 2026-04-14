@@ -2,7 +2,7 @@
 name: product-reviewer
 office: development
 skill: product-reviewer, quality-gate, subscription-system
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 2
 receives_from: Product Manager
 delivers_to: UX Architect

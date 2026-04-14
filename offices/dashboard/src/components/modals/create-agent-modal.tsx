@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Bot, ChevronRight, ChevronLeft, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { MODEL_GROUPS } from '@/lib/model-options';
 
 interface CreateAgentModalProps {
   open: boolean;
@@ -10,12 +11,6 @@ interface CreateAgentModalProps {
   onCreated: () => void;
   preselectedOffice?: string;
 }
-
-const MODEL_OPTIONS = [
-  { value: 'haiku', label: 'Haiku', desc: 'Fast, cheap — validation, formatting' },
-  { value: 'sonnet', label: 'Sonnet', desc: 'Balanced — creation, analysis, implementation' },
-  { value: 'opus', label: 'Opus', desc: 'Powerful — complex decisions only' },
-] as const;
 
 const STEPS = ['Basics', 'Identity', 'Rules', 'Review'] as const;
 
@@ -162,7 +157,7 @@ export function CreateAgentModal({ open, onClose, onCreated, preselectedOffice }
               <Field label="Slug" placeholder="auto-generated" value={form.name} onChange={(v) => update('name', v)} hint="Used as filename" />
               <SelectField label="Office" value={form.office} options={offices.map((o) => ({ value: o, label: o.charAt(0).toUpperCase() + o.slice(1) }))} onChange={(v) => update('office', v)} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <SelectField label="Model" value={form.model} options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: `${m.label} — ${m.desc}` }))} onChange={(v) => update('model', v)} />
+                <SelectField label="Model" value={form.model} groups={MODEL_GROUPS} onChange={(v) => update('model', v)} />
                 <Field label="Pipeline Position" type="number" value={String(form.pipelinePosition)} onChange={(v) => update('pipelinePosition', parseInt(v) || 1)} />
               </div>
               <SelectField label="Primary Skill" value={form.skill} options={skills.map((s) => ({ value: s, label: s }))} onChange={(v) => update('skill', v)} placeholder="Select office first" />
@@ -311,8 +306,13 @@ function TextArea({ label, placeholder, value, onChange, rows = 4 }: {
   );
 }
 
-function SelectField({ label, value, options, onChange, placeholder }: {
-  label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void; placeholder?: string;
+function SelectField({ label, value, options, groups, onChange, placeholder }: {
+  label: string;
+  value: string;
+  options?: { value: string; label: string }[];
+  groups?: { group: string; options: { value: string; label: string }[] }[];
+  onChange: (v: string) => void;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -323,9 +323,17 @@ function SelectField({ label, value, options, onChange, placeholder }: {
         className="w-full px-3 py-2 bg-surface-0 border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
       >
         <option value="">{placeholder || `Select ${label.toLowerCase()}...`}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
+        {groups
+          ? groups.map((g) => (
+              <optgroup key={g.group} label={g.group}>
+                {g.options.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </optgroup>
+            ))
+          : (options || []).map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
       </select>
     </div>
   );

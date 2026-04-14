@@ -6,9 +6,9 @@ Sistema de escritorios de agentes IA com Mission Control Dashboard, integracao T
 
 | Escritorio | Agentes | Orcamento |
 |------------|---------|-----------|
-| Marketing | 10 | R$ 15/dia, R$ 100/mes |
-| Development | 13 | R$ 15/dia, R$ 200/mes |
-| Innovation | 6 | R$ 10/dia, R$ 100/mes |
+| Marketing | 10 | $10/day, $175/month |
+| Development | 13 | $10/day, $350/month |
+| Innovation | 6 | $10/day, $20/month |
 
 Detalhes dos pipelines completos em `docs/INSTALL.md`.
 

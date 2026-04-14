@@ -5,6 +5,7 @@ import {
   X, Bot, Loader2, CheckCircle, AlertCircle, FileText, Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { MODEL_GROUPS } from '@/lib/model-options';
 import type { Agent } from '@/types';
 
 interface EditAgentModalProps {
@@ -13,14 +14,6 @@ interface EditAgentModalProps {
   onClose: () => void;
   onSaved: () => void;
 }
-
-const MODEL_OPTIONS = [
-  { value: 'haiku', label: 'Haiku — fast / cheap' },
-  { value: 'sonnet', label: 'Sonnet — balanced' },
-  { value: 'opus', label: 'Opus — most capable' },
-  { value: 'ollama-llama3.2', label: 'Ollama Llama 3.2 (local)' },
-  { value: 'ollama-qwen3', label: 'Ollama Qwen3 (local)' },
-] as const;
 
 type Tab = 'attributes' | 'markdown';
 
@@ -198,7 +191,7 @@ export function EditAgentModal({ agent, open, onClose, onSaved }: EditAgentModal
                 <SelectField
                   label="Model"
                   value={attrs.model}
-                  options={MODEL_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
+                  groups={MODEL_GROUPS}
                   onChange={(v) => updateAttr('model', v)}
                 />
                 <Field
@@ -359,13 +352,15 @@ function SelectField({
   label,
   value,
   options,
+  groups,
   onChange,
   placeholder,
   allowEmpty,
 }: {
   label: string;
   value: string;
-  options: { value: string; label: string }[];
+  options?: { value: string; label: string }[];
+  groups?: { group: string; options: { value: string; label: string }[] }[];
   onChange: (v: string) => void;
   placeholder?: string;
   allowEmpty?: boolean;
@@ -381,11 +376,21 @@ function SelectField({
         {(allowEmpty || !value) && (
           <option value="">{placeholder || `Select ${label.toLowerCase()}...`}</option>
         )}
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
+        {groups
+          ? groups.map((g) => (
+              <optgroup key={g.group} label={g.group}>
+                {g.options.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))
+          : (options || []).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
       </select>
     </div>
   );

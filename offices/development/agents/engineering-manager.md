@@ -2,7 +2,7 @@
 name: engineering-manager
 office: development
 skill: engineering-manager, subscription-system
-model: sonnet
+model: qwen/qwen3.6-plus
 pipeline_position: 6
 receives_from: Software Architect
 delivers_to: Frontend Developer, Backend Developer, Database Architect (parallel)
