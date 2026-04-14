@@ -166,7 +166,10 @@ export async function prefilterMessage(
 
   const parsed = tryParseClassification(raw);
   if (!parsed || !parsed.category) {
-    logger.debug({ raw: raw.slice(0, 200) }, 'Pre-filter returned unparseable output');
+    logger.debug(
+      { raw: raw.slice(0, 200) },
+      'Pre-filter returned unparseable output',
+    );
     return {
       classification: 'needs-claude',
       reason: 'unparseable classifier output',

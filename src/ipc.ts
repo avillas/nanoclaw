@@ -242,14 +242,39 @@ const COST_TABLE: Record<
   ollama: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   // OpenRouter models
   'openrouter/gpt-4o': { input: 2.5, output: 10, cacheRead: 0, cacheWrite: 0 },
-  'openrouter/gpt-4o-mini': { input: 0.15, output: 0.6, cacheRead: 0, cacheWrite: 0 },
-  'openrouter/gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0, cacheWrite: 0 },
-  'openrouter/gemini-2.5-flash': { input: 0.15, output: 0.6, cacheRead: 0, cacheWrite: 0 },
-  'openrouter/deepseek': { input: 0.27, output: 1.1, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/gpt-4o-mini': {
+    input: 0.15,
+    output: 0.6,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
+  'openrouter/gemini-2.5-pro': {
+    input: 1.25,
+    output: 10,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
+  'openrouter/gemini-2.5-flash': {
+    input: 0.15,
+    output: 0.6,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
+  'openrouter/deepseek': {
+    input: 0.27,
+    output: 1.1,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
   'openrouter/llama': { input: 0.2, output: 0.6, cacheRead: 0, cacheWrite: 0 },
   'openrouter/mistral': { input: 2, output: 6, cacheRead: 0, cacheWrite: 0 },
   'openrouter/qwen': { input: 0.5, output: 2, cacheRead: 0, cacheWrite: 0 },
-  'openrouter/stepfun': { input: 0.13, output: 0.5, cacheRead: 0, cacheWrite: 0 },
+  'openrouter/stepfun': {
+    input: 0.13,
+    output: 0.5,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
   // Fallback for unknown OpenRouter models — sonnet-equivalent pricing
   'openrouter/default': { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
 };
@@ -344,7 +369,13 @@ function processCostFile(
   const costUsd =
     data.cost_usd != null && data.cost_usd > 0
       ? Math.round(data.cost_usd * 10000) / 10000
-      : computeCostUsd(model, tokensIn, tokensOut, tokensCacheRead, tokensCacheWrite);
+      : computeCostUsd(
+          model,
+          tokensIn,
+          tokensOut,
+          tokensCacheRead,
+          tokensCacheWrite,
+        );
 
   const costId = `cost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 

@@ -229,9 +229,7 @@ function runMigrations(database: Database.Database): void {
     .prepare("PRAGMA table_info('agent_costs')")
     .all() as Array<{ name: string }>;
   if (cols.some((c) => c.name === 'cost_brl')) {
-    database.exec(
-      'ALTER TABLE agent_costs RENAME COLUMN cost_brl TO cost_usd',
-    );
+    database.exec('ALTER TABLE agent_costs RENAME COLUMN cost_brl TO cost_usd');
     logger.info('Migration: renamed agent_costs.cost_brl → cost_usd');
   }
 }

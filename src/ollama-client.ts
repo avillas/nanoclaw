@@ -94,7 +94,9 @@ export async function ollamaModelAvailable(
     const data = (await res.json()) as { models?: Array<{ name: string }> };
     const names = (data.models || []).map((m) => m.name);
     // Allow tag suffix flexibility: "qwen3:8b" matches "qwen3:8b" or "qwen3:8b-q4_K_M"
-    return names.some((n) => n === model || n.startsWith(`${model.split(':')[0]}:`));
+    return names.some(
+      (n) => n === model || n.startsWith(`${model.split(':')[0]}:`),
+    );
   } catch (err) {
     logger.debug(
       { err: (err as Error).message, host, model },

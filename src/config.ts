@@ -26,9 +26,7 @@ export const ASSISTANT_HAS_OWN_NUMBER =
 export const OLLAMA_ADMIN_TOOLS =
   (process.env.OLLAMA_ADMIN_TOOLS || envConfig.OLLAMA_ADMIN_TOOLS) === 'true';
 export const OLLAMA_HOST =
-  process.env.OLLAMA_HOST ||
-  envConfig.OLLAMA_HOST ||
-  'http://172.17.0.1:11434';
+  process.env.OLLAMA_HOST || envConfig.OLLAMA_HOST || 'http://172.17.0.1:11434';
 export const OLLAMA_PREFILTER_ENABLED =
   (process.env.OLLAMA_PREFILTER_ENABLED ||
     envConfig.OLLAMA_PREFILTER_ENABLED) === 'true';
