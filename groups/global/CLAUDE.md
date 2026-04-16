@@ -66,12 +66,46 @@ After producing a deliverable, **tell the user** the file is available on the da
 
 ## Memory
 
-The `conversations/` folder contains searchable history of past conversations. Use this to recall context from previous sessions.
+Você tem **três camadas** de memória. Escolha a certa.
 
-When you learn something important:
-- Create files for structured data (e.g., `customers.md`, `preferences.md`)
-- Split files larger than 500 lines into folders
-- Keep an index in your memory for the files you create
+### 1. Conversas recentes — `conversations/`
+
+O folder `conversations/` (dentro do grupo) tem histórico pesquisável de conversas passadas. Use pra recuperar contexto recente de uma conversa específica.
+
+### 2. Memória leve do grupo — arquivos em `/workspace/group/`
+
+Fatos soltos, preferências, listas. Convenções:
+- Arquivos por tópico (ex.: `customers.md`, `preferences.md`)
+- Divida >500 linhas em pasta
+- Mantenha um índice das memórias criadas
+
+### 3. Journal global — `/workspace/global/journal/` ⭐
+
+**Memória de trabalho compartilhada entre todos os agentes de todos os grupos.** É a camada principal contra "começar do zero toda invocação". Daily notes + project notes, com wikilinks Obsidian.
+
+**Leia no início** (se a tarefa não for trivial):
+- `/workspace/global/journal/daily/$(date +%F).md` — o que já rolou hoje
+- `/workspace/global/journal/index.md` — projetos ativos
+- `/workspace/global/journal/projects/<slug>.md` — projetos específicos mencionados
+
+**Escreva no fim** (se fez algo relevante):
+- Apende checkpoint em `journal/daily/YYYY-MM-DD.md` com cabeçalho `## [HH:MM] <group_folder> — <resumo>`
+- Atualize ou crie `projects/<slug>.md` se tocou projeto recorrente
+- Registre projetos novos em `journal/index.md`
+
+Protocolo completo: `/workspace/skills/journal/SKILL.md` (ou invoque `/journal`).
+
+**Não modifique** `/workspace/global/CLAUDE.md` (este arquivo) — só o main atualiza sob pedido explícito. O resto do vault global é append-friendly para todos.
+
+### Qual camada usar?
+
+| Caso | Camada |
+|------|--------|
+| Trecho de conversa específica | `conversations/` |
+| "Aniversário do user é X" | Memória leve do grupo |
+| "O que fizemos no projeto Y essa semana?" | Journal global |
+| "Qual decisão tomamos sobre Z?" | Journal global (`projects/z.md`) |
+| Fim de trabalho relevante | **Sempre** apendar no journal global |
 
 ## Message Formatting
 

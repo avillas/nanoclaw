@@ -126,14 +126,16 @@ function buildVolumeMounts(
       readonly: false,
     });
 
-    // Global memory directory (read-only for non-main)
-    // Only directory mounts are supported, not file mounts
+    // Global memory directory — writable for all groups so agents can
+    // append to the shared journal. Non-journal files (e.g. CLAUDE.md)
+    // should not be modified by non-main agents; this is enforced by
+    // instruction in groups/global/CLAUDE.md rather than mount perms.
     const globalDir = path.join(GROUPS_DIR, 'global');
     if (fs.existsSync(globalDir)) {
       mounts.push({
         hostPath: globalDir,
         containerPath: '/workspace/global',
-        readonly: true,
+        readonly: false,
       });
     }
   }
