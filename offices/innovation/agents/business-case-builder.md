@@ -2,7 +2,7 @@
 name: business-case-builder
 office: innovation
 skill: business-case-builder
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 4
 receives_from: Technology Scout
 delivers_to: Opportunity Validator

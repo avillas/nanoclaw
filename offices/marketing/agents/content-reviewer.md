@@ -2,7 +2,7 @@
 name: content-reviewer
 office: marketing
 skill: content-creator, quality-gate
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 2
 receives_from: Content Writer
 delivers_to: Instagram Strategist

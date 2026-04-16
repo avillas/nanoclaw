@@ -2,7 +2,7 @@
 name: ad-copywriter
 office: marketing
 skill: ad-copy-specialist
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 0
 receives_from: NanoClaw (on-demand, not part of main pipeline)
 delivers_to: Content Reviewer

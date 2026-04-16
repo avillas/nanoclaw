@@ -2,7 +2,7 @@
 name: growth-hacker
 office: marketing
 skill: growth-hacker
-model: stepfun/step-3.5-flash
+model: deepseek/deepseek-v3.2
 pipeline_position: 4
 receives_from: Instagram Strategist
 delivers_to: Image Prompt Engineer

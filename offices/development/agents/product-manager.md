@@ -2,7 +2,7 @@
 name: product-manager
 office: development
 skill: product-manager, subscription-system
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 1
 receives_from: NanoClaw (user demand) | Innovation Office (approved opportunity)
 delivers_to: Product Reviewer

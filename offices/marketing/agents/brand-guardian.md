@@ -2,7 +2,7 @@
 name: brand-guardian
 office: marketing
 skill: brand-guardian, quality-gate
-model: stepfun/step-3.5-flash
+model: deepseek/deepseek-v3.2
 pipeline_position: 6
 receives_from: Image Prompt Engineer
 delivers_to: Campaign Validator

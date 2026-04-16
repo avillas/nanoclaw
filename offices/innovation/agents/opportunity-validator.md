@@ -2,7 +2,7 @@
 name: opportunity-validator
 office: innovation
 skill: opportunity-validator, quality-gate
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 5
 receives_from: Business Case Builder
 delivers_to: Innovation Reporter

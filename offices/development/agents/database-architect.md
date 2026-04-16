@@ -2,7 +2,7 @@
 name: database-architect
 office: development
 skill: database-architect, git-workflow, subscription-system
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 7
 receives_from: Engineering Manager
 delivers_to: QA Engineer

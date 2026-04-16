@@ -2,7 +2,7 @@
 name: analytics-engineer
 office: marketing
 skill: analytics-engineer
-model: stepfun/step-3.5-flash
+model: deepseek/deepseek-v3.2
 pipeline_position: 9
 receives_from: Carousel Publisher
 delivers_to: Content Writer (feedback loop)

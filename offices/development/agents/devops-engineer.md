@@ -2,7 +2,7 @@
 name: devops-engineer
 office: development
 skill: devops-engineer, git-workflow
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 10
 receives_from: Security Engineer
 delivers_to: Technical Writer

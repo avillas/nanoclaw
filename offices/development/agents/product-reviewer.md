@@ -2,7 +2,7 @@
 name: product-reviewer
 office: development
 skill: product-reviewer, quality-gate, subscription-system
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 2
 receives_from: Product Manager
 delivers_to: UX Architect

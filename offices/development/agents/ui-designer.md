@@ -2,7 +2,7 @@
 name: ui-designer
 office: development
 skill: ui-designer
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 4
 receives_from: UX Architect
 delivers_to: Software Architect

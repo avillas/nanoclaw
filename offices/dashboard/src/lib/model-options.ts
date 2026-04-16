@@ -64,6 +64,7 @@ export const OPENROUTER_MODELS: ModelOption[] = [
   { value: 'qwen/qwen-2.5-72b-instruct', label: 'Qwen 2.5 72B Instruct', desc: '$0.35 / $0.40' },
 
   // DeepSeek
+  { value: 'deepseek/deepseek-v3.2', label: 'DeepSeek V3.2', desc: '$0.27 / $1.10' },
   { value: 'deepseek/deepseek-chat-v3', label: 'DeepSeek Chat v3', desc: '$0.27 / $1.10' },
   { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (reasoning)', desc: '$0.55 / $2.19' },
 

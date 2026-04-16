@@ -2,7 +2,7 @@
 name: image-prompt-engineer
 office: marketing
 skill: image-prompt-engineer
-model: qwen/qwen3.6-plus
+model: deepseek/deepseek-v3.2
 pipeline_position: 5
 receives_from: Growth Hacker
 delivers_to: Brand Guardian

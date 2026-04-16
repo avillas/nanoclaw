@@ -2,7 +2,7 @@
 name: technology-scout
 office: innovation
 skill: technology-scout, web-research
-model: stepfun/step-3.5-flash
+model: deepseek/deepseek-v3.2
 pipeline_position: 3
 receives_from: Competitive Intelligence Analyst
 delivers_to: Business Case Builder

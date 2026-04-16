@@ -2,7 +2,7 @@
 name: innovation-reporter
 office: innovation
 skill: innovation-reporter, approval-request
-model: stepfun/step-3.5-flash
+model: deepseek/deepseek-v3.2
 pipeline_position: 6
 receives_from: Opportunity Validator
 delivers_to: User (via Telegram) → handoff to Development Office
