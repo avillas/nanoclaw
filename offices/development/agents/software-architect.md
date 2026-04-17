@@ -3,7 +3,7 @@ name: software-architect
 office: development
 skill: software-architect, subscription-system
 model: opus
-pipeline_position: 5
+pipeline_position: 6
 receives_from: UI Designer
 delivers_to: Engineering Manager
 ---

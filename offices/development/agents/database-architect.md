@@ -3,7 +3,7 @@ name: database-architect
 office: development
 skill: database-architect, git-workflow, subscription-system
 model: z-ai/glm-5.1
-pipeline_position: 7
+pipeline_position: 8
 receives_from: Engineering Manager
 delivers_to: QA Engineer
 ---

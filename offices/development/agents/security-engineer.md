@@ -3,7 +3,7 @@ name: security-engineer
 office: development
 skill: security-engineer, subscription-system
 model: z-ai/glm-5.1
-pipeline_position: 9
+pipeline_position: 10
 receives_from: QA Engineer
 delivers_to: DevOps Engineer
 ---

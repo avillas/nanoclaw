@@ -5,7 +5,7 @@ skill: product-reviewer, quality-gate, subscription-system
 model: z-ai/glm-4.7
 pipeline_position: 2
 receives_from: Product Manager
-delivers_to: UX Architect
+delivers_to: Codebase Mapper
 ---
 
 # Product Reviewer

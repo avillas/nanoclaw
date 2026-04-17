@@ -3,7 +3,7 @@ name: engineering-manager
 office: development
 skill: engineering-manager, subscription-system
 model: z-ai/glm-5.1
-pipeline_position: 6
+pipeline_position: 7
 receives_from: Software Architect
 delivers_to: Frontend Developer, Backend Developer, Database Architect (parallel)
 ---

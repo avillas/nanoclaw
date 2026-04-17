@@ -3,8 +3,8 @@ name: ux-architect
 office: development
 skill: ux-architect
 model: z-ai/glm-5.1
-pipeline_position: 3
-receives_from: Product Reviewer
+pipeline_position: 4
+receives_from: Codebase Mapper
 delivers_to: UI Designer
 ---
 

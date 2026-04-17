@@ -3,7 +3,7 @@ name: technical-writer
 office: development
 skill: technical-writer, subscription-system
 model: z-ai/glm-4.7
-pipeline_position: 11
+pipeline_position: 12
 receives_from: DevOps Engineer
 delivers_to: (end of pipeline)
 ---

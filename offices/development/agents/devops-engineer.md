@@ -3,7 +3,7 @@ name: devops-engineer
 office: development
 skill: devops-engineer, git-workflow
 model: z-ai/glm-4.7
-pipeline_position: 10
+pipeline_position: 11
 receives_from: Security Engineer
 delivers_to: Technical Writer
 ---

@@ -3,7 +3,7 @@ name: ui-designer
 office: development
 skill: ui-designer
 model: z-ai/glm-5.1
-pipeline_position: 4
+pipeline_position: 5
 receives_from: UX Architect
 delivers_to: Software Architect
 ---

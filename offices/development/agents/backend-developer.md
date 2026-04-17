@@ -3,7 +3,7 @@ name: backend-developer
 office: development
 skill: backend-architect, git-workflow, subscription-system
 model: sonnet
-pipeline_position: 7
+pipeline_position: 8
 receives_from: Engineering Manager
 delivers_to: QA Engineer
 ---

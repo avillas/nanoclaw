@@ -3,7 +3,7 @@ name: qa-engineer
 office: development
 skill: qa-engineer, subscription-system
 model: z-ai/glm-4.7
-pipeline_position: 8
+pipeline_position: 9
 receives_from: Frontend Developer, Backend Developer, Database Architect
 delivers_to: Security Engineer
 ---
