@@ -13,11 +13,16 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   IDLE_TIMEOUT,
+  AWS_ACCESS_KEY,
+  AWS_SECRET_KEY,
   OLLAMA_ADMIN_TOOLS,
   OLLAMA_HOST,
   ONECLI_URL,
   OPENROUTER_API_KEY,
   OPENROUTER_DEFAULT_MODEL,
+  S3_BUCKET_NAME,
+  S3_PREFIX,
+  S3_REGION,
   TIMEZONE,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
@@ -342,6 +347,16 @@ async function buildContainerArgs(
   if (officeName) {
     args.push('-e', `NANOCLAW_OFFICE=${officeName}`);
   }
+
+  // S3 / AWS — for the s3-uploader skill (offices/shared/skills/s3-uploader).
+  // AWS signs its own requests so it can't go through the OneCLI HTTPS proxy;
+  // we forward the credentials as env vars instead. upload.sh maps these to
+  // the AWS-CLI standard names (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY).
+  if (AWS_ACCESS_KEY) args.push('-e', `AWS_ACCESS_KEY=${AWS_ACCESS_KEY}`);
+  if (AWS_SECRET_KEY) args.push('-e', `AWS_SECRET_KEY=${AWS_SECRET_KEY}`);
+  if (S3_REGION) args.push('-e', `S3_REGION=${S3_REGION}`);
+  if (S3_BUCKET_NAME) args.push('-e', `S3_BUCKET_NAME=${S3_BUCKET_NAME}`);
+  if (S3_PREFIX) args.push('-e', `S3_PREFIX=${S3_PREFIX}`);
 
   // OneCLI gateway handles credential injection — containers never see real secrets.
   // The gateway intercepts HTTPS traffic and injects API keys or OAuth tokens.

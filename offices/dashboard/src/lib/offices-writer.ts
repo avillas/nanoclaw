@@ -123,10 +123,17 @@ function buildAgentsBlock(agents: AgentSummary[]): string {
       table += `| ${a.displayName} | ${a.role} | ${a.model} |\n`;
     }
   }
+  // Agents with pipeline_position <= 0 or >= 100 are standalone (out of the
+  // pipeline) — they appear in the team table but not in the delegation chain.
+  // Convention: use pipeline_position: 99 (or similar high number) for
+  // specialist agents accessible directly.
+  const pipelineAgents = agents.filter(
+    (a) => a.pipelinePosition > 0 && a.pipelinePosition < 99,
+  );
   const pipelineBody =
-    agents.length === 0
+    pipelineAgents.length === 0
       ? '(No pipeline defined yet — add agents first)'
-      : agents.map((a) => a.displayName).join(' → ');
+      : pipelineAgents.map((a) => a.displayName).join(' → ');
   const pipeline = `\n## Pipeline\n\n\`\`\`\n${pipelineBody}\n\`\`\`\n`;
   return `<!-- AGENTS:START -->\n${table}${pipeline}<!-- AGENTS:END -->`;
 }

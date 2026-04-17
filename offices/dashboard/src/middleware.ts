@@ -15,5 +15,7 @@ export const config = {
     '/activity/:path*',
     '/costs/:path*',
     '/users/:path*',
+    '/schedules/:path*',
+    '/secrets/:path*',
   ],
 };
