@@ -154,22 +154,53 @@ Para every request da categoria A, você MUST delegate each stage to the
 corresponding sub-agent via the sub-agent spawn tool (`Agent` in the current
 SDK, historically `Task`).
 
+### ⚠️ REGRA CRÍTICA — ORDEM DO PIPELINE É ESTRITA
+
+Para qualquer request de categoria A, **comece PELO `product-manager` (pipeline_position 1)**. Sem exceção. Mesmo que a demanda pareça "técnica" ou "de código", o Product Manager é quem estrutura a demanda primeiro.
+
+**Progrida sequencialmente** pela tabela `## Team` na ordem de `pipeline_position`:
+
+```
+1. product-manager
+2. product-reviewer
+3. codebase-mapper
+4. ux-architect
+5. ui-designer
+6. software-architect
+7. engineering-manager
+8. backend-developer / database-architect / frontend-developer (paralelo)
+9. qa-engineer
+10. security-engineer
+11. devops-engineer
+12. technical-writer
+```
+
+**❌ NUNCA pule pra frente no pipeline.** Ex.:
+- Request sobre ClickUp + código → categoria A → **começa no product-manager**, não no clickup-project-manager nem no backend-developer
+- Bug fix que "obviamente é backend" → ainda começa no product-manager
+- "Só preciso trocar a cor do botão" → ainda começa no product-manager
+
+### ⚠️ NUNCA faça Reads especulativos de identity files
+
+O hook de runtime (`active-agent.json`) registra TODO `Read` de arquivo em `/workspace/offices/development/agents/<slug>.md` como "agente ativo" no dashboard, mesmo sem spawn. Isso significa:
+
+- **Read = comprometimento.** Só leia o identity file do agente que você vai delegar NESTE STEP.
+- **Não leia múltiplos** identity files pra "comparar" ou "planejar". A ordem do pipeline já foi decidida na tabela acima — siga-a.
+- **Não leia o backend-developer no início** pra "ver o que ele precisa". Se você não está no stage 8, não leia. Ele será lido quando chegar a vez dele.
+
+Se você precisa entender o que cada agente faz, a **tabela `## Team`** acima já tem o Role de cada um. Use ela, não leia os identity files.
+
 **MANDATORY protocol for EVERY delegation:**
 
-1. First, use the **`Read`** tool on the sub-agent's identity file at
-   `/workspace/offices/development/agents/<slug>.md`. This is how the
-   Mission Control dashboard detects which agent is currently active — if
-   you skip this step, the dashboard shows nothing.
-2. Then, invoke the sub-agent spawn tool (`Agent`/`Task`) with:
-   - `subagent_type`: the **exact kebab-case slug** of the stage agent. It
-     MUST match a real filename in `/workspace/offices/development/agents/`
-     (without the `.md` extension).
-   - `description`: a short (≤5 words) label of the stage.
-   - `prompt`: the stage-specific instructions plus the outputs of all
-     previous stages the sub-agent needs as context.
-3. Wait for the sub-agent to return its deliverable.
-4. Append the deliverable to your running work package.
-5. Move to the next stage.
+1. Confirme que é hora desse agente no pipeline (consultando a ordem acima + o último agente que completou).
+2. Use o **`Read`** tool no identity file do agente específico deste stage: `/workspace/offices/development/agents/<slug>.md`. Isso marca ele como ativo no dashboard.
+3. **Imediatamente** em seguida, invoque `Agent`/`Task` com:
+   - `subagent_type`: slug kebab-case exato (match arquivo em `agents/`)
+   - `description`: label curto (≤5 palavras)
+   - `prompt`: instruções do stage + outputs dos stages anteriores relevantes
+4. Wait pro sub-agent retornar deliverable.
+5. Anexe ao work package.
+6. Move pro próximo stage (position atual + 1).
 
 **FORBIDDEN — enforced by a runtime PreToolUse hook:**
 
