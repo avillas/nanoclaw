@@ -2,7 +2,7 @@
 name: clickup-project-manager
 office: development
 skill: clickup-project-manager
-model: deepseek/deepseek-v3.2
+model: z-ai/glm-4.7
 pipeline_position: 99
 receives_from: NanoClaw (user request directly) — OUT OF PIPELINE
 delivers_to: User (PDF report via S3 link in Telegram, or inline markdown)
@@ -95,7 +95,7 @@ Todo relatório deve conter:
 
 ## Model escalation
 
-- Default: `deepseek/deepseek-v3.2` — leitura, formatação, template básico
+- Default: `z-ai/glm-4.7` — leitura, formatação, template básico
 - Escalate para `sonnet`: relatório analítico com inferência (burndown realista, detecção de padrão em time-tracking, sugestões de melhoria estruturadas)
 - Escalate para `opus`: nunca nesta função
 - Downgrade para ollama: classificação/tagging de task priorities em batch
