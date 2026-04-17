@@ -80,12 +80,10 @@ export const OPENROUTER_API_KEY =
   process.env.OPENROUTER_API_KEY || envConfig.OPENROUTER_API_KEY;
 export const OPENROUTER_DEFAULT_MODEL =
   process.env.OPENROUTER_DEFAULT_MODEL || envConfig.OPENROUTER_DEFAULT_MODEL;
-export const S3_REGION =
-  process.env.S3_REGION || envConfig.S3_REGION;
+export const S3_REGION = process.env.S3_REGION || envConfig.S3_REGION;
 export const S3_BUCKET_NAME =
   process.env.S3_BUCKET_NAME || envConfig.S3_BUCKET_NAME;
-export const S3_PREFIX =
-  process.env.S3_PREFIX || envConfig.S3_PREFIX;
+export const S3_PREFIX = process.env.S3_PREFIX || envConfig.S3_PREFIX;
 export const AWS_ACCESS_KEY =
   process.env.AWS_ACCESS_KEY || envConfig.AWS_ACCESS_KEY;
 export const AWS_SECRET_KEY =
