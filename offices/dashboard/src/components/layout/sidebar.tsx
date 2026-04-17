@@ -6,7 +6,7 @@ import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard, Building2, Bot, GitBranch, Activity,
   DollarSign, LogOut, Cpu, ChevronRight, Container, Apple, Send,
-  Monitor, Sun, Moon, X, Sparkles, FileDown, Users,
+  Monitor, Sun, Moon, X, Sparkles, FileDown, Users, Clock,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/cn';
@@ -22,6 +22,7 @@ const navItems = [
   { href: '/reports', label: 'Reports', icon: FileDown },
   { href: '/floor', label: 'Office Floor', icon: Monitor },
   { href: '/pipelines', label: 'Pipelines', icon: GitBranch },
+  { href: '/schedules', label: 'Schedules', icon: Clock },
   { href: '/activity', label: 'Activity', icon: Activity },
   { href: '/costs', label: 'Costs', icon: DollarSign },
   { href: '/telegram', label: 'Telegram', icon: Send },

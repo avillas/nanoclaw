@@ -1,0 +1,21 @@
+import { NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import { runNow } from '@/lib/schedules';
+
+type RouteCtx = { params: Promise<{ id: string }> };
+
+export async function POST(_req: Request, { params }: RouteCtx) {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { id } = await params;
+  try {
+    const task = runNow(id);
+    return NextResponse.json(task);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to run now' },
+      { status: 400 },
+    );
+  }
+}

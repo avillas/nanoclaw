@@ -81,21 +81,37 @@ Fatos soltos, preferências, listas. Convenções:
 
 ### 3. Journal global — `/workspace/global/journal/` ⭐
 
-**Memória de trabalho compartilhada entre todos os agentes de todos os grupos.** É a camada principal contra "começar do zero toda invocação". Daily notes + project notes, com wikilinks Obsidian.
+**Memória de trabalho compartilhada entre todos os agentes de todos os grupos.** É a camada principal contra "começar do zero toda invocação". Vault Obsidian com 4 sub-camadas:
+
+| Pasta | Dono | Propósito |
+|-------|------|-----------|
+| `daily/` | todos (append) | Checkpoints cronológicos do que foi feito |
+| `projects/` | todos | Contexto vivo por projeto/tópico recorrente |
+| `memories/` | só `/dream` | Fatos consolidados com proveniência |
+| `dreams/` | só `/dream` e `/purge` | Logs do processo de sonho e expurgo |
+| `archive/` | só `/purge` | Memórias soft-arquivadas |
 
 **Leia no início** (se a tarefa não for trivial):
 - `/workspace/global/journal/daily/$(date +%F).md` — o que já rolou hoje
-- `/workspace/global/journal/index.md` — projetos ativos
+- `/workspace/global/journal/index.md` — projetos ativos + memórias consolidadas
 - `/workspace/global/journal/projects/<slug>.md` — projetos específicos mencionados
+- `/workspace/global/journal/memories/` — busque por termo com `rg "<termo>" memories/`
 
 **Escreva no fim** (se fez algo relevante):
 - Apende checkpoint em `journal/daily/YYYY-MM-DD.md` com cabeçalho `## [HH:MM] <group_folder> — <resumo>`
 - Atualize ou crie `projects/<slug>.md` se tocou projeto recorrente
 - Registre projetos novos em `journal/index.md`
+- **Não** escreva em `memories/` diretamente — isso é trabalho do `/dream`
 
 Protocolo completo: `/workspace/skills/journal/SKILL.md` (ou invoque `/journal`).
 
-**Não modifique** `/workspace/global/CLAUDE.md` (este arquivo) — só o main atualiza sob pedido explícito. O resto do vault global é append-friendly para todos.
+### Ciclo de sonho
+
+- **Diário 03:00 BRT** — `/dream` consolida traço das últimas 24h em `memories/`, classifica memorável vs transitório, detecta padrões, escreve `dreams/YYYY-MM-DD.md`, envia resumo matinal (configurável)
+- **Semanal dom 04:00 BRT** — `/purge` arquiva memórias >180d sem uso + 0 backlinks; hard-delete de archive >365d
+- **Config** em `journal/.dream-config.json` — toggle `morning_summary`, quotas, retenção
+
+**Não modifique** `/workspace/global/CLAUDE.md` (este arquivo) — só o main atualiza sob pedido explícito.
 
 ### Qual camada usar?
 
