@@ -97,13 +97,16 @@ Workspace: `mariliadias`. Auth via OneCLI proxy (Basic Auth injetado em `bitbuck
 
 ```
 GIT RULES:
-- Main branch varia por repo: master OU development. NUNCA main (não existe).
-  Descobrir via: curl -s api.bitbucket.org/2.0/repositories/mariliadias/<repo> | jq -r .mainbranch.name
-- ALWAYS create branch from main branch detectada: agent/{agent-name}/{task-id}-{description}
+- Integration branch padrão: development. TODO PR deve ter target = development.
+- master é protegida — NUNCA abrir PR para master (recebe merge de development via humano).
+- Confirmar que development existe antes de iniciar:
+  curl -s api.bitbucket.org/2.0/repositories/mariliadias/<repo>/refs/branches/development | jq -r .name
+  Se não existe → parar e perguntar ao usuário.
+- ALWAYS create feature branch from development: agent/{agent-name}/{task-id}-{description}
 - NEVER push directly to master or development
 - NEVER use git push --force
 - NEVER delete branches
-- ALWAYS open a PR after completing a task
+- ALWAYS open a PR (target=development) after completing a task
 - Commit format: type(scope): description
 ```
 

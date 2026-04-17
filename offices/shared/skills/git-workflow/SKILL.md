@@ -9,15 +9,15 @@ description: Git workflow rules for Bitbucket Cloud integration. Use whenever an
 
 - **Bitbucket Cloud workspace:** `mariliadias`
 - **URL pattern:** `https://bitbucket.org/mariliadias/<repo>.git`
-- **Branch principal varia por repo:** alguns usam `development`, outros `master`. **Sempre confirme antes** de criar branch:
+- **Integration branch padrão: `development`.** TODO PR **deve** ter destination = `development`, **nunca** `master`. `master` é considerada branch de produção protegida — mexer nela só via merge de `development` feito por humano.
+- **Branches de feature** são criadas a partir de `development` (não de master).
+- Se o repo **não tem** branch `development` (raro; confirmar via API):
   ```bash
-  MAIN_BRANCH=$(curl -s "https://api.bitbucket.org/2.0/repositories/mariliadias/<repo>" \
-    | jq -r '.mainbranch.name')
+  curl -s "https://api.bitbucket.org/2.0/repositories/mariliadias/<repo>/refs/branches/development" \
+    | jq -r '.name // "not-found"'
   ```
-  Repos conhecidos atualmente:
-  - `development` → megaserver, msdescarga, megaproxygo, ...
-  - `master` → msdesmembra, msbingo, ms_log, jconfig, ...
-- **Nunca** push direto na main branch — sempre via PR.
+  Nesse caso, **pare e pergunte ao usuário** antes de prosseguir — não caia em `master` automaticamente.
+- Alguns repos têm `mainbranch: master` registrado no Bitbucket (config histórica) mas ainda usam `development` como integration — checar existência da branch `development` é o que manda, não o `mainbranch` do API.
 
 ## Authentication (transparente — não precisa fazer nada)
 
@@ -78,16 +78,17 @@ Closes PROJ-123.
 ## Fluxo padrão por task
 
 ```bash
-# 0. Descobrir a main branch do repo
+# 0. Confirmar que o repo tem branch development
 REPO=myrepo
-MAIN_BRANCH=$(curl -s "https://api.bitbucket.org/2.0/repositories/mariliadias/$REPO" | jq -r '.mainbranch.name')
+DEV_EXISTS=$(curl -s "https://api.bitbucket.org/2.0/repositories/mariliadias/$REPO/refs/branches/development" | jq -r '.name // "not-found"')
+[ "$DEV_EXISTS" = "not-found" ] && { echo "repo $REPO não tem branch development — perguntar ao usuário"; exit 1; }
 
 # 1. Clone (ou cd no já clonado)
 git clone "https://bitbucket.org/mariliadias/$REPO.git"
 cd "$REPO"
 
-# 2. Branch a partir da main branch correta
-git checkout "$MAIN_BRANCH"
+# 2. Branch a partir de development (sempre)
+git checkout development
 git pull
 git checkout -b agent/<agent-slug>/<task-id>-<description>
 
@@ -98,24 +99,27 @@ git commit -m "feat(scope): ..."
 # 4. Push
 git push -u origin agent/<agent-slug>/<task-id>-<description>
 
-# 5. Abrir PR com destination = $MAIN_BRANCH (ver skill /pull-request)
+# 5. Abrir PR com destination = development (ver skill /pull-request)
 ```
 
 ## NEVER
 
-- ❌ Push direto na main branch (`development` ou `master` conforme repo) — sempre via PR
+- ❌ PR target = `master` — **SEMPRE** `development`
+- ❌ Push direto em `development` ou `master` — sempre via PR
+- ❌ Criar feature branch a partir de `master` — sempre a partir de `development`
 - ❌ `git push --force` — reescrever histórico compartilhado
 - ❌ `git branch -D` em branch remota — não deletar branches alheias
 - ❌ Hardcode de credencial em URL ou `.git/config` — OneCLI proxy faz isso
-- ❌ Assumir que toda main branch chama `develop` ou `main` — checar via API
+- ❌ Fallback silencioso pra `master` se `development` não existir — pergunte ao usuário
 
 ## ALWAYS
 
-- ✅ Descobrir `mainbranch` antes de iniciar (via API)
-- ✅ Branch criada a partir da main branch correta e atualizada
+- ✅ Confirmar que `development` existe no repo (via API) antes de iniciar
+- ✅ Checkout de `development` atualizado antes de criar feature branch
+- ✅ Feature branch criada **a partir de development**
 - ✅ Commits atômicos (uma mudança lógica por commit)
 - ✅ Mensagem de commit no padrão `type(scope): description`
-- ✅ PR aberto após task completa (target = main branch detectada)
+- ✅ PR aberto após task completa — **target sempre `development`**
 - ✅ `git config user.email` setado pro slug do agente
 
 ## Permissões do token

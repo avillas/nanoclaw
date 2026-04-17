@@ -49,7 +49,7 @@ curl -s -X POST \
     "title": "feat(auth): add OAuth callback handler",
     "description": "## What\n...",
     "source": { "branch": { "name": "agent/backend-developer/PROJ-123-oauth-callback" } },
-    "destination": { "branch": { "name": "<MAIN_BRANCH>" } },
+    "destination": { "branch": { "name": "development" } },
     "close_source_branch": true,
     "reviewers": []
   }' | jq '.id, .links.html.href'
@@ -131,7 +131,7 @@ curl -s "https://api.bitbucket.org/2.0/repositories/mariliadias/<repo>/commit/<s
 
 ## Regras
 
-- **Target:** main branch do repo (`master` OU `development` no workspace `mariliadias`). Descobrir via `GET /repositories/mariliadias/<repo>` → `.mainbranch.name` antes de criar o PR. Nunca usar `main` (não existe nesse workspace).
+- **Target: SEMPRE `development`.** Nunca `master` nem `main`. `master` é protegida — só recebe merge de `development` feito por humano. Se o repo não tem branch `development`, **pare e pergunte** ao usuário antes de prosseguir (não caia silenciosamente em `master`).
 - **Um PR por task** — se a task gerou múltiplas mudanças não relacionadas, abra PRs separados.
 - **Title:** mesmo padrão do commit (`type(scope): description`).
 - **Reviewers:** opcional; agentes não auto-aprovam sem o humano.
