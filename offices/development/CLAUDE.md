@@ -90,10 +90,14 @@ RATE LIMITS:
 
 ## Bitbucket integration
 
+Workspace: `mariliadias`. Auth via OneCLI proxy (Basic Auth injetado em `bitbucket.org` e `api.bitbucket.org`). Detalhes operacionais em `/workspace/extra/office-shared/skills/git-workflow/SKILL.md` e `/workspace/extra/office-shared/skills/pull-request/SKILL.md`.
+
 ```
 GIT RULES:
-- ALWAYS create branch from develop: agent/{agent-name}/{task-id}-{description}
-- NEVER push directly to main or develop
+- Main branch varia por repo: master OU development. NUNCA main (não existe).
+  Descobrir via: curl -s api.bitbucket.org/2.0/repositories/mariliadias/<repo> | jq -r .mainbranch.name
+- ALWAYS create branch from main branch detectada: agent/{agent-name}/{task-id}-{description}
+- NEVER push directly to master or development
 - NEVER use git push --force
 - NEVER delete branches
 - ALWAYS open a PR after completing a task
